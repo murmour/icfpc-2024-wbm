@@ -1,0 +1,26 @@
+{
+    "makefile.launchConfigurations": [
+        {
+            "cwd": "/home/linesprower/cw24/src/solver",
+            "binaryPath": "/home/linesprower/cw24/src/solver/solver",
+            "binaryArgs": []
+        }
+    ],
+    "files.associations": {
+        "array": "cpp",
+        "*.tcc": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "unordered_set": "cpp",
+        "memory": "cpp",
+        "string_view": "cpp",
+        "istream": "cpp",
+        "ostream": "cpp",
+        "sstream": "cpp",
+        "streambuf": "cpp",
+        "functional": "cpp",
+        "regex": "cpp",
+        "tuple": "cpp",
+        "iostream": "cpp"
+    }
+}

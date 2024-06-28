@@ -1,0 +1,8 @@
+__pycache__
+.vs
+Debug
+Release
+x64
+*.o
+solver/solver
+main
