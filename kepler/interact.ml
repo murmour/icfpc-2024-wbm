@@ -2,7 +2,9 @@
 module BF = Buffer
 module S = String
 
+let printf = Printf.printf
 let sprintf = Printf.sprintf
+let eprintf = Printf.eprintf
 
 
 let send_url = "https://boundvariable.space/communicate"
@@ -42,19 +44,48 @@ let send (data: string) : string =
         failwith (sprintf "Unexpected HTTP response (%d): %s" code body)
 
 
-let () =
-  let response = send (Sys.argv.(1)) in
-  Printf.printf "response:\n\n%s\n\n\n" response;
+let send_pretty (request: string) : unit =
+  let response = send request in
+  printf "response:\n\n%s\n\n\n" response;
   match Kepler.parse_expr response with
     | Error msg ->
-        Printf.eprintf "response parse error: %s\n" msg;
+        eprintf "response parse error: %s\n" msg;
         exit 1
     | Ok e ->
         let pretty = Kepler.print_expr e in
-        Printf.printf "pretty:\n\n%s\n\n\n" pretty;
+        printf "pretty:\n\n%s\n\n\n" pretty;
         match Kepler.eval e with
           | Error msg ->
-              Printf.eprintf "eval error: %s\n" msg;
+              eprintf "eval error: %s\n" msg;
               exit 1
           | Ok e ->
-              Printf.printf "eval:\n\n%s\n" (Kepler.print_res e)
+              printf "eval:\n\n%s\n" (Kepler.print_res e)
+
+
+let send_string_to_string (request: string) : unit =
+  let request = sprintf "S%s" (Kepler.encode_string request) in
+  let response = send request in
+  match Kepler.parse_expr response with
+    | Error msg ->
+        eprintf "response parse error: %s\n" msg;
+        exit 1
+    | Ok e ->
+        match Kepler.eval e with
+          | Error msg ->
+              eprintf "eval error: %s\n" msg;
+              exit 1
+          | Ok e ->
+              output_string stdout (Kepler.print_raw_res e)
+
+
+let () =
+  match Sys.argv.(1) with
+    | "-i" ->
+        send_pretty Sys.argv.(2)
+    | "-s" ->
+        send_pretty (sprintf "S%s" (Kepler.encode_string Sys.argv.(2)))
+    | "-ss" ->
+        send_string_to_string Sys.argv.(2)
+    | etc ->
+        eprintf "invalid arg: %s\n" etc;
+        exit 1

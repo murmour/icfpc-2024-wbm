@@ -208,6 +208,14 @@ let print_res (r: eval_res) : string =
     | Lam (v, _, _) -> sprintf "fun v%i -> ..." v
 
 
+let print_raw_res (r: eval_res) : string =
+  match r with
+    | B b -> sprintf "%b" b
+    | I i -> sprintf "%d" i
+    | S s -> s
+    | Lam (v, _, _) -> sprintf "fun v%i -> ..." v
+
+
 let eval (e: expr) : (eval_res, string) result =
   let exception Err of string in
   let pp = print_res in
