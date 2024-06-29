@@ -111,6 +111,7 @@ let () =
   let mode = match Sys.argv.(1) with
     | "-print_icfp" -> `Print_icfp
     | "-print_kepler" -> `Print_kepler
+    | "-check_length" -> `Check_length
     | "-eval" -> `Eval
     | etc ->
         failwith (sprintf "unknown mode: %s" etc)
@@ -150,4 +151,17 @@ let () =
 
     | `Print_icfp ->
         Printf.printf "%s" (K.print_icfp kepler_expr);
+        exit 0
+
+    | `Check_length ->
+        let eval_res =
+          match K.eval kepler_expr with
+            | Ok r -> r
+            | Error msg ->
+                Printf.eprintf "eval error: %s\n" msg;
+                exit 1
+        in
+        let s1 = K.print_res eval_res in
+        let s2 = K.print_icfp kepler_expr in
+        Printf.printf "string len: %d, icfp len: %d" (S.length s1) (S.length s2);
         exit 0
