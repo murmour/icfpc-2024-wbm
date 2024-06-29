@@ -78,14 +78,33 @@ let send_string_to_string (request: string) : unit =
               output_string stdout (Kepler.print_raw_res e)
 
 
+let read_all ch : string =
+  let buf_size = 4096 in
+  let buf = Buffer.create buf_size in
+  let bytes = Bytes.create buf_size in
+  let rec iter () =
+    let len = input ch bytes 0 buf_size in
+    if len > 0 then
+      (Buffer.add_subbytes buf bytes 0 len;
+       iter ())
+  in
+  iter ();
+  Buffer.contents buf
+
+
 let () =
+  let input =
+    match Sys.argv.(2) with
+      | "stdin" -> read_all stdin
+      | etc -> etc
+  in
   match Sys.argv.(1) with
     | "-i" ->
-        send_pretty Sys.argv.(2)
+        send_pretty input
     | "-s" ->
-        send_pretty (sprintf "S%s" (Kepler.encode_string Sys.argv.(2)))
+        send_pretty (sprintf "S%s" (Kepler.encode_string input))
     | "-ss" ->
-        send_string_to_string Sys.argv.(2)
+        send_string_to_string input
     | etc ->
         eprintf "invalid arg: %s\n" etc;
         exit 1
