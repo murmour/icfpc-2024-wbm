@@ -44,11 +44,17 @@ let send (data: string) : string =
 
 let () =
   let response = send (Sys.argv.(1)) in
+  Printf.printf "response:\n\n%s\n\n\n" response;
   match Kepler.parse_expr response with
     | Error msg ->
         Printf.eprintf "response parse error: %s\n" msg;
         exit 1
     | Ok e ->
         let pretty = Kepler.print_expr e in
-        Printf.printf "response:\n\n%s\n\n\npretty:\n\n%s\n" response pretty;
-        exit 0
+        Printf.printf "pretty:\n\n%s\n\n\n" pretty;
+        match Kepler.eval e with
+          | Error msg ->
+              Printf.eprintf "eval error: %s\n" msg;
+              exit 1
+          | Ok e ->
+              Printf.printf "eval:\n\n%s\n" (Kepler.print_res e)
