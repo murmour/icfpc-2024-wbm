@@ -1,0 +1,103 @@
+
+inline rule comment =
+  "(*" (comment | !"*)" .)* "*)"
+
+inline rule ws =
+  (comment `nil | [ \t\r\n]+)*
+
+inline rule tok{s} =
+  s < ws
+
+inline rule parens{p} =
+  tok{"("} p < tok{")"}
+
+rule id =
+  !any_key
+  tok{`str{[a-zA-Z_][a-zA-Z_0-9]*}}
+
+rule lit_int =
+  tok{`str{"-"?[0-9]+}}
+
+rule lit_string =
+  "\"" `str{("\\".|[^\"])*} < tok{"\""}
+
+inline rule key{s} =
+  s ![a-zA-Z0-9_] ws
+
+inline rule any_key =
+  | key{"true"}
+  | key{"false"}
+  | key{"let"}
+  | key{"in"}
+  | key{"fun"}
+  | key{"if"}
+  | key{"then"}
+  | key{"else"}
+  | key{"not"}
+
+rule type =
+  | TFun{id, tok{"->"} type}
+  | TId{id}
+
+rule typed_arg =
+  | (id, TAny)
+  | parens{(id, tok{":"} type)}
+
+rule res_type =
+  | tok{":"} type
+  | TAny
+
+inline rule expr6 =
+  | key{"true"} True
+  | key{"false"} False
+  | Int{lit_int}
+  | String{lit_string}
+  | Var{id}
+  | If{key{"if"} expr, key{"then"} expr, key{"else"} expr}
+  | Fun{key{"fun"} typed_arg+, res_type, tok{"->"} expr}
+  | Let{key{"let"} id, typed_arg*, res_type, tok{"="} expr, key{"in"} expr}
+  | parens{expr}
+
+inline rule expr5 =
+  let lhs = expr6 in
+  (App{lhs, expr5} | lhs)
+
+inline rule expr4 =
+  | Neg{tok{"-"} expr4}
+  | Not{key{"not"} expr4}
+  | expr5
+
+inline rule expr3 =
+  let lhs = expr4 in
+  ( Mul{lhs, tok{"*"} expr3}
+  | Div{lhs, tok{"/"} expr3}
+  | Mod{lhs, tok{"%"} expr3}
+  | lhs )
+
+inline rule expr2 =
+  let lhs = expr3 in
+  ( Add{lhs, tok{"+"} expr2}
+  | Sub{lhs, tok{"-"} expr2}
+  | lhs )
+
+inline rule expr1 =
+  let lhs = expr2 in
+  ( Gt{lhs, tok{">"} expr1}
+  | Lt{lhs, tok{"<"} expr1}
+  | Eq{lhs, tok{"="} expr1}
+  | Conc{lhs, tok{"^"} expr1}
+  | lhs )
+
+inline rule expr0 =
+  let lhs = expr1 in
+  ( And{lhs, tok{"&&"} expr0}
+  | Or{lhs, tok{"||"} expr0}
+  | lhs )
+
+inline rule expr = expr0
+
+rule decl =
+  (key{"let"} id, typed_arg*, res_type, tok{"="} expr) < tok{";"}
+
+inline rule program =
+  ws decl* < eof

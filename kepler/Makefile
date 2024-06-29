@@ -1,9 +1,12 @@
 
 kepler: kepler.mli kepler.ml
-	ocamlopt $^ -o kepler
+	ocamlopt $^ -o $@
 
 interact: kepler.mli kepler.ml interact.ml
-	ocamlfind opt -linkpkg -package 'curl' $^ -o interact
+	ocamlfind opt -linkpkg -package 'curl' $^ -o $@
+
+MageML: kepler.mli kepler.ml CharStream.mli CharStream.ml peg_MageML.mli peg_MageML.ml MageML.ml
+	ocamlfind opt -linkpkg $^ -o $@
 
 clean:
-	rm -rf *.o *.cmi *.cmx kepler interact
+	rm -rf *.o *.cmi *.cmx kepler interact MageML
