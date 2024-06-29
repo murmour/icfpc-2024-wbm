@@ -1,6 +1,8 @@
 use std::{collections::HashMap, fs, io::{self, BufRead}, rc::Rc, time::Duration};
+use immutable_map::TreeMap;
 use itertools::Itertools;
 use lazy_static::lazy_static;
+use once_cell::{sync::Lazy, unsync::OnceCell};
 use std::thread;
 use std::time;
 
@@ -35,6 +37,48 @@ impl UnaryOp {
             UnaryOp::IntToStr => "$",
         };
         String::from(s)
+    }
+}
+
+struct LazyEval {
+    expr: Rc<Expr>,
+    env: Env,
+    res: OnceCell<EvalResult>,
+}
+
+impl LazyEval {
+    fn eval(&self) -> EvalResult {
+        self.res.get_or_init(f)
+    }
+}
+
+enum EvalResult {
+    Bool(bool),
+    Int(NumType),
+    Str(String),
+    Lambda(VarType, Rc<Expr>, TreeMap<VarType, Rc<Lazy<EvalResult>>>),
+}
+
+impl EvalResult {
+    fn int(&self) -> NumType {
+        match self {
+            EvalResult::Int(x) => *x,
+            _ => panic!()
+        }
+    }
+
+    fn bool(&self) -> bool {
+        match self {
+            EvalResult::Bool(x) => *x,
+            _ => panic!()
+        }
+    }
+
+    fn str(&self) -> &str {
+        match self {
+            EvalResult::Str(s) => s,
+            _ => panic!()
+        }
     }
 }
 
@@ -102,8 +146,7 @@ impl BinaryOp {
 
 #[derive(Debug)]
 enum Token {
-    True,
-    False,
+    Bool(bool),
     Int(NumType),
     Str(String),
     Unary(UnaryOp),
@@ -169,11 +212,11 @@ impl Token {
         let res = match key {
             'T' => {
                 assert!(body.is_empty());
-                Token::True
+                Token::Bool(true)
             },
             'F' => {
                 assert!(body.is_empty());
-                Token::False
+                Token::Bool(false)
             },
             '?' => {
                 assert!(body.is_empty());
@@ -205,8 +248,7 @@ impl Token {
 
 #[derive(Debug)]
 enum Expr {
-    True,
-    False,
+    Bool(bool),
     Int(NumType),
     Str(String),
     Unary(UnaryOp, Rc<Expr>),
@@ -221,56 +263,56 @@ type PExpr = Rc<Expr>;
 impl Expr {
     pub fn to_string(&self) -> String {
         match self {
-            Expr::True => String::from("True"),
-            Expr::False => String::from("False"),
+            Expr::Bool(b) => b.to_string(),
             Expr::Int(x) => x.to_string(),
             Expr::Str(s) => s.clone(),
             Expr::Unary(op, e) => op.to_string() + &e.to_string(),
-            Expr::Binary(op, a, b) => format!("{} {} {}", a.to_string(), op.to_string(), b.to_string()),
-            Expr::If(c, a, b) => format!("{} ? {} : {}", c.to_string(), a.to_string(), b.to_string()),
+            Expr::Binary(op, a, b) => format!("B{} {} {}", op.to_string(), a.to_string(), b.to_string()),
+            Expr::If(c, a, b) => format!("({} ? {} : {})", c.to_string(), a.to_string(), b.to_string()),
             Expr::Lambda(x, e) => format!("λ{} {}", x, e.to_string()),
             Expr::Var(x) => format!("x{}", x),
         }
     }
 
-    fn int(&self) -> NumType {
-        match self {
-            Expr::Int(x) => *x,
-            _ => panic!()
-        }
-    }
+    // fn int(&self) -> NumType {
+    //     match self {
+    //         Expr::Int(x) => *x,
+    //         _ => panic!()
+    //     }
+    // }
 
-    fn bool(&self) -> bool {
-        match self {
-            Expr::True => true,
-            Expr::False => false,
-            _ => panic!()
-        }
-    }
+    // fn bool(&self) -> bool {
+    //     match self {
+    //         Expr::Bool(x) => *x,
+    //         _ => panic!()
+    //     }
+    // }
 
-    fn str(&self) -> &str {
-        match self {
-            Expr::Str(s) => s,
-            _ => panic!()
-        }
-    }
+    // fn str(&self) -> &str {
+    //     match self {
+    //         Expr::Str(s) => s,
+    //         _ => panic!()
+    //     }
+    // }
 }
 
 
 struct ExprBuilder {
-    e_true: PExpr,
-    e_false: PExpr,
+    //e_true: PExpr,
+    //e_false: PExpr,
 }
+
+type Env = TreeMap<VarType, Rc<Lazy<EvalResult>>>;
 
 impl ExprBuilder {
     fn new() -> Self {
-        Self { e_true: Rc::new(Expr::True), e_false: Rc::new(Expr::False) }
+        //Self { e_true: Rc::new(Expr::Bool(true)), e_false: Rc::new(Expr::Bool(false)) }
+        Self {}
     }
 
     fn make_expr_rec(&self, tokens: &[Token]) -> (PExpr, usize) {
         match &tokens[0] {
-            Token::True => (self.e_true.clone(), 1),
-            Token::False => (self.e_false.clone(), 1),
+            Token::Bool(x) => (Rc::new(Expr::Bool(*x)), 1),
             Token::Int(x) => (Rc::new(Expr::Int(*x)), 1),
             Token::Str(s) => (Rc::new(Expr::Str(s.clone())), 1),
             Token::Unary(op) => {
@@ -301,41 +343,39 @@ impl ExprBuilder {
         if n == tokens.len() { Some(e) } else { None }
     }
 
-    fn eval_expr(&self, expr: PExpr, env: &mut HashMap<VarType, PExpr>) -> PExpr {
+    fn eval_expr(&self, expr: PExpr, env: Env) -> EvalResult {
+        //println!("{}", expr.to_string());
         match expr.as_ref() {
-            Expr::True => expr,
-            Expr::False => expr,
-            Expr::Int(_) => expr,
-            Expr::Str(_) => expr,
+            Expr::Bool(x) => EvalResult::Bool(*x),
+            Expr::Int(x) => EvalResult::Int(*x),
+            Expr::Str(s) => EvalResult::Str(s.clone()),
             Expr::Unary(op, e) => {
                 let e = self.eval_expr(e.clone(), env);
                 match op {
                     UnaryOp::Not => {
-                        match e.as_ref() {
-                            Expr::True => self.e_false.clone(),
-                            Expr::False => self.e_true.clone(),
+                        match e {
+                            EvalResult::Bool(x) => EvalResult::Bool(!x),
                             _ => panic!(),
                         }
                     },
                     UnaryOp::Neg => {
-                        match e.as_ref() {
-                            Expr::Int(x) => Rc::new(Expr::Int(-x)),
+                        match e {
+                            EvalResult::Int(x) => EvalResult::Int(-x),
                             _ => panic!(),
                         }
                     },
                     UnaryOp::StrToInt => {
-                        match e.as_ref() {
-                            Expr::Str(s) => {
-                                //let chars: Vec<_> = s.chars().collect();
+                        match e {
+                            EvalResult::Str(s) => {
                                 let chars: Vec<_> = s.chars().map(|c| *INV_MAP.get(&c).unwrap()).collect();
-                                Rc::new(Expr::Int( parse_num(&chars) ))
+                                EvalResult::Int( parse_num(&chars) )
                             }
                             _ => panic!(),
                         }
                     },
                     UnaryOp::IntToStr => {
-                        match e.as_ref() {
-                            Expr::Int(x) => Rc::new(Expr::Str(print_num(*x))),
+                        match e {
+                            EvalResult::Int(x) => EvalResult::Str(print_num(x)),
                             _ => panic!(),
                         }
                     },
@@ -343,46 +383,44 @@ impl ExprBuilder {
             },
             Expr::Binary(op, a, b) => {
                 if matches!(op, BinaryOp::Apply) {
-                    let val = self.eval_expr(b.clone(), env);
-                    let mut cur = a.clone();
-                    loop {
-                        match cur.as_ref() {
-                            Expr::Lambda(var, inner) => {
-                                env.insert(*var, val);
-                                return self.eval_expr(inner.clone(), env)
-                            },
-                            _ => ()
+                    match self.eval_expr(a.clone(), env) {
+                        EvalResult::Lambda(var, body, env) => {
+                            let body_env = env.insert(var, 
+                                Rc::new(Lazy::new(move || self.eval_expr(b.clone(), env))));
+                            let res = self.eval_expr(body, body_env);
+                            return res;
+                        },
+                        _ => {
+                            panic!()
                         }
-                        cur = self.eval_expr(cur, env);
+
                     }
                 }
                 let a = self.eval_expr(a.clone(), env);
                 let b = self.eval_expr(b.clone(), env);
                 match op {
-                    BinaryOp::Add => Rc::new(Expr::Int(a.int() + b.int())),
-                    BinaryOp::Sub => Rc::new(Expr::Int(a.int() - b.int())),
-                    BinaryOp::Mul => Rc::new(Expr::Int(a.int() * b.int())),
-                    BinaryOp::Div => Rc::new(Expr::Int(a.int() / b.int())),
-                    BinaryOp::Mod => Rc::new(Expr::Int(a.int() % b.int())),
-                    BinaryOp::Less => if a.int() < b.int() { self.e_true.clone() } else { self.e_false.clone() },
-                    BinaryOp::Gt => if a.int() > b.int() { self.e_true.clone() } else { self.e_false.clone() },
+                    BinaryOp::Add => EvalResult::Int(a.int() + b.int()),
+                    BinaryOp::Sub => EvalResult::Int(a.int() - b.int()),
+                    BinaryOp::Mul => EvalResult::Int(a.int() * b.int()),
+                    BinaryOp::Div => EvalResult::Int(a.int() / b.int()),
+                    BinaryOp::Mod => EvalResult::Int(a.int() % b.int()),
+                    BinaryOp::Less => EvalResult::Bool(a.int() < b.int()),
+                    BinaryOp::Gt => EvalResult::Bool(a.int() > b.int()),
                     BinaryOp::Eq => {
-                        let res = match (a.as_ref(), b.as_ref()) {
-                            (Expr::Int(x), Expr::Int(y)) => x == y,
-                            (Expr::Str(x), Expr::Str(y)) => x == y,
-                            (Expr::True, Expr::True) => true,
-                            (Expr::False, Expr::False) => true,
-                            (Expr::True, Expr::False) => false,
-                            (Expr::False, Expr::True) => false,
+                        let res = match (a, b) {
+                            (EvalResult::Int(x), EvalResult::Int(y)) => x == y,
+                            (EvalResult::Str(x), EvalResult::Str(y)) => x == y,
+                            (EvalResult::Bool(x), EvalResult::Bool(y)) => x == y,
                             _ => panic!()
                         };
-                        if res { self.e_true.clone() } else { self.e_false.clone() }
+                        EvalResult::Bool(res)
                     },
-                    BinaryOp::Or => if a.bool() || b.bool() { self.e_true.clone() } else { self.e_false.clone() },
-                    BinaryOp::And => if a.bool() && b.bool() { self.e_true.clone() } else { self.e_false.clone() },
-                    BinaryOp::Concat => Rc::new(Expr::Str(String::from(a.str()) + b.str())),
-                    BinaryOp::Take => Rc::new(Expr::Str(b.str().chars().take(a.int() as usize).collect())),
-                    BinaryOp::Drop => Rc::new(Expr::Str(b.str().chars().skip(a.int() as usize).collect())),
+                    // todo: short-circuiting
+                    BinaryOp::Or => EvalResult::Bool(a.bool() || b.bool()),
+                    BinaryOp::And => EvalResult::Bool(a.bool() && b.bool()),
+                    BinaryOp::Concat => EvalResult::Str(String::from(a.str()) + b.str()),
+                    BinaryOp::Take => EvalResult::Str(b.str().chars().take(a.int() as usize).collect()),
+                    BinaryOp::Drop => EvalResult::Str(b.str().chars().skip(a.int() as usize).collect()),
                     BinaryOp::Apply => panic!(),
                 }
             },
@@ -390,35 +428,84 @@ impl ExprBuilder {
                 let a = self.eval_expr(a.clone(), env);
                 if a.bool() {
                     self.eval_expr(b.clone(), env)
+                    //b.clone()
                 } else {
                     self.eval_expr(c.clone(), env)
+                    //c.clone()
                 }
             },
-            Expr::Lambda(_, _) => expr,
+            Expr::Lambda(var, body) => {
+                EvalResult::Lambda(*var, body.clone(), env)
+            }
             Expr::Var(x) => {
                 match env.get(x) {
-                    Some(v) => v.clone(),
-                    None => expr,
+                    Some(v) => v.force(),
+                    None => panic!()
                 }
             },
-        }
+        }        
     }
 
     fn eval_string(&self, s: &str) -> PExpr {
         let tokens = s.split_ascii_whitespace().map(|s| Token::parse(s).unwrap()).collect_vec();
-        let e = self.make_expr(&tokens).unwrap();
-        //println!("{:?}", e);
-        let mut env = HashMap::new();
-        let e = self.eval_expr(e, &mut env);
+        let mut e = self.make_expr(&tokens).unwrap();
+        println!("{:?}", e.to_string());
+        for i in 0..10 {
+            let mut env = HashMap::new();
+            e = self.eval_expr(e, &mut env);
+            if !matches!(e.as_ref(), Expr::Binary(_, _, _)) { break }
+            println!("Iter {} {:?}", i, e.to_string());
+        }
         e
     }
 
+    // fn make_unique_rec(&self, expr: PExpr, env: &mut HashMap<VarType, VarType>, ctr: &mut VarType) -> PExpr {
+    //     match expr.as_ref() {
+    //         Expr::True => expr,
+    //         Expr::False => expr,
+    //         Expr::Int(_) => expr,
+    //         Expr::Str(_) => expr,
+    //         Expr::Unary(op, e) => Rc::new(Expr::Unary(*op, self.make_unique_rec(e.clone(), env, ctr))),
+    //         Expr::Binary(op, a, b) => Rc::new(Expr::Binary(*op, 
+    //             self.make_unique_rec(a.clone(), env, ctr),
+    //             self.make_unique_rec(b.clone(), env, ctr))),
+    //         Expr::If(a, b, c) => Rc::new(Expr::If(
+    //             self.make_unique_rec(a.clone(), env, ctr),
+    //             self.make_unique_rec(b.clone(), env, ctr),
+    //             self.make_unique_rec(c.clone(), env, ctr))),
+    //         Expr::Lambda(var, e) => {
+    //             let t = *ctr;
+    //             *ctr += 1;
+    //             env.insert(*var, t);
+    //             Rc::new(Expr::Lambda(t, self.make_unique_rec(e.clone(), env, ctr)))
+    //         },
+    //         Expr::Var(x) => {
+    //             Rc::new(Expr::Var(*env.get(x).unwrap_or(&0)))
+    //         },
+    //     }
+
+    // }
+
+    // fn make_unique(&self, expr: PExpr) -> PExpr {
+    //     let mut env = HashMap::new();
+    //     let mut ctr = 1;
+    //     self.make_unique_rec(expr, &mut env, &mut ctr)
+    // }
+
 }
+
+
 
 
 fn repl() {
     let stdin = io::stdin();
     let eb = ExprBuilder::new();
+    //let s = r#"B$ B$ L" B$ L# B$ v" B$ v# v# L# B$ v" B$ v# v# L" L# ? B= v# I! I" B$ L$ B+ B$ v" v$ B$ v" v$ B- v# I" I%"#;
+    let s = r#"B$ L# B$ L" B+ v" v" B* I$ I# v8"#;
+    let e = eb.eval_string(s);
+    println!("{:?}", e);
+    return;
+
     for line in stdin.lock().lines() {
         let s = line.unwrap();
         let e = eb.eval_string(&s);
@@ -477,7 +564,7 @@ fn communicate_msg(msg: &str) -> String {
 }
 
 fn download_lambdaman() {
-    for i in 1..=21 {
+    for i in 7..=21 {
         let t = communicate_msg(&format!("get lambdaman{}", i));
         let fname = format!("../../data/lambdaman/{:02}.in", i);
         fs::write(&fname, t).unwrap();
@@ -487,9 +574,9 @@ fn download_lambdaman() {
 }
 
 fn main_inner() {
-    //repl()
+    repl()
     //communicate()
-    download_lambdaman()
+    //download_lambdaman()
 }
 
 const STACK_SIZE: usize = 128 * 1024 * 1024;
