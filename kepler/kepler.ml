@@ -1,10 +1,10 @@
 
-let sprintf = Printf.sprintf
-
 module HT = Hashtbl
 module BF = Buffer
 module S = String
 module IM = Map.Make (Int)
+
+let sprintf = Printf.sprintf
 
 
 type var = int
@@ -83,7 +83,10 @@ let encode_int (i: int) : string =
 (* Parsing
    -------------------------------------------------------------------------- *)
 
-let parse_expr (s: string) : expr =
+let parse_expr (s: string) : (expr, string) result =
+  let exception Err of string in
+  let err s = raise (Err s) in
+
   let i = ref 0 in
   let s = s ^ "\000" in
 
@@ -101,9 +104,7 @@ let parse_expr (s: string) : expr =
             | '!' -> incr i; UNot (expr ())
             | '#' -> incr i; StoI (expr ())
             | '$' -> incr i; ItoS (expr ())
-            | c ->
-                Printf.printf "unexpected %c at %d\n" c !i;
-                assert false
+            | c -> err (sprintf "unexpected %c at %d\n" c !i)
           end
       | 'B' ->
           incr i;
@@ -122,9 +123,7 @@ let parse_expr (s: string) : expr =
             | 'T' -> incr i; let l = expr () in let r = expr () in Take (l, r)
             | 'D' -> incr i; let l = expr () in let r = expr () in Drop (l, r)
             | '$' -> incr i; let l = expr () in let r = expr () in App (l, r)
-            | c ->
-                Printf.printf "unexpected %c at %d\n" c !i;
-                assert false
+            | c -> err (sprintf "unexpected %c at %d\n" c !i)
           end
       | '?' ->
           incr i;
@@ -141,8 +140,7 @@ let parse_expr (s: string) : expr =
           incr i;
           Var (int ())
       | c ->
-          Printf.printf "unexpected %c at %d\n" c !i;
-          assert false
+          err (sprintf "unexpected %c at %d\n" c !i)
 
   and int () : int =
     decode_int (body ())
@@ -156,7 +154,7 @@ let parse_expr (s: string) : expr =
     BF.contents b
   in
 
-  expr ()
+  try Ok (expr ()) with Err s -> Error s
 
 
 (* Printing
