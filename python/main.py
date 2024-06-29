@@ -1,8 +1,9 @@
 import subprocess, io, os
 import time
 
+
 def interact(request):
-    return subprocess.check_output(['../../data/ocaml_bins/interact', '-ss', request])
+    return subprocess.check_output(['../kepler/interact', '-ss', request])
 
 
 def download(request, path, n):
@@ -30,6 +31,9 @@ def download_spaceship():
 def download_3d():
     download("get 3d%d", "../../data/3d", 12)
 
+def download_efficiency():
+    download("get efficiency%d", "../../data/efficency", 13)
+
 
 def create_folders(task_name, cnt):
     for i in range(cnt):
@@ -41,7 +45,8 @@ def create_folders(task_name, cnt):
 def main():
     #download_lambdaman()
     #download_spaceship()
-    download_3d()
+    #download_3d()
+    download_efficiency()
     #create_folders("spaceship", 25)
     #create_folders("lambdaman", 21)
 
