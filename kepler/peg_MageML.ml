@@ -1,5 +1,6 @@
 (* this code is produced by magic! do not edit! *)
 
+
 type var = string
 
 type type_ =
@@ -201,7 +202,7 @@ and gCl _c _i =
   match S.read_char _c.s _i with Some c when (c >= 'a' && c <= 'z') || ((c >= 'A' && c <= 'Z') || ((c >= '0' && c <= '9') || (c = '_'))) -> S ((), _i+1) | _ -> F
 and gCk _c _i =
   match expr6 _c _i with F -> F | S (lhs, _i) -> (match (match S (lhs, _i) with F -> F | S (r0, _i) ->
-  match expr5 _c _i with F -> F | S (r1, _i) ->
+  match (if (if S.match_char '-' _c.s _i then S ((), _i+1) else F) <> F then F else expr5 _c _i) with F -> F | S (r1, _i) ->
   S (App (r0, r1), _i)) with F -> S (lhs, _i) | s -> s)
 and gCj _c _i =
   match gCi _c _i with F -> gCd _c _i | s -> s
@@ -310,12 +311,13 @@ and gB8 _c _i =
 and gB7 _c _i =
   match S.read_char _c.s _i with Some c when (c >= 'a' && c <= 'z') || ((c >= 'A' && c <= 'Z') || ((c >= '0' && c <= '9') || (c = '_'))) -> S ((), _i+1) | _ -> F
 and gB6 _c _i =
+  match typed_arg _c _i with F -> F | S (hd, _i) ->
   let rec iter _i =
     match typed_arg _c _i with | F -> ([], _i) | S (r, _i) ->
     let (l, _i) = iter _i in (r :: l, _i)
   in
   let (l, _i) = iter _i in
-  S (l, _i)
+  S (hd :: l, _i)
 and gB5 _c _i =
   match gB4 _c _i with F -> gBr _c _i | s -> s
 and gB4 _c _i =
