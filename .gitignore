@@ -7,3 +7,4 @@ x64
 solver/solver
 main
 interpreter/target/
+*.exe
