@@ -30,7 +30,7 @@ type expr =
   | Conc of string_expr * string_expr
   | Take of int_expr * string_expr
   | Drop of int_expr * string_expr
-  | If of { cond: bool_expr; thn: expr; els: expr }
+  | If of bool_expr * expr * expr
   | App of expr * expr
   | Lam of var * expr
   | Var of var
@@ -130,7 +130,7 @@ let parse_expr (s: string) : (expr, string) result =
           let cond = expr () in
           let thn = expr () in
           let els = expr () in
-          If { cond; thn; els }
+          If (cond, thn, els)
       | 'L' ->
           incr i;
           let var = int () in
@@ -183,7 +183,7 @@ let rec print_expr (e: expr) : string =
     | Conc (a, b) -> sprintf "%s ^ %s" (print_expr a) (print_expr b)
     | Take (a, b) -> sprintf "take %s %s" (print_expr a) (print_expr b)
     | Drop (a, b) -> sprintf "drop %s %s" (print_expr a) (print_expr b)
-    | If { cond; thn; els } ->
+    | If (cond, thn, els) ->
         sprintf "if %s %s %s" (print_expr cond) (print_expr thn) (print_expr els)
     | App (a, b) -> sprintf "%s(%s)" (print_expr a) (print_expr b)
     | Lam (v, e) -> sprintf "(fun v%d -> %s)" v (print_expr e)
@@ -315,7 +315,7 @@ let eval (e: expr) : (eval_res, string) result =
             | (I i, S s) -> S (String.sub s i (S.length s - i))
             | (a, b) -> err (sprintf "Take got %s, %s" (pp a) (pp b))
           end
-      | If { cond; thn; els } ->
+      | If (cond, thn, els) ->
           begin match eval env cond with
             | (B true) -> eval env thn
             | (B false) -> eval env els
