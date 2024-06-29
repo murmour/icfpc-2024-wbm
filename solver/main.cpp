@@ -73,8 +73,8 @@ struct IPoint {
         return {x - other.x, y - other.y};
     }
 
-    int sqd(const IPoint &other) const {
-        return Sqr(x - other.x) + Sqr(y - other.y);
+    LL sqd(const IPoint &other) const {
+        return Sqr((LL)x - other.x) + Sqr((LL)y - other.y);
     }
 };
 
@@ -83,7 +83,7 @@ struct IPoint {
 // const int max_steps = 50;
 
 const int max_delta = 1000;
-const int max_vel = 30;
+const int max_vel = 25;
 const int max_steps = 100;
 
 const int D = 2 * max_delta + 1;
@@ -189,6 +189,25 @@ pair<int, IPoint> solve_step(IPoint delta, IPoint vel, IPoint delta2, Solution *
     ass(vel.x <= max_vel);
     ass(vel.y >= -max_vel);
     ass(vel.y <= max_vel);
+
+    int pre_steps = 0;
+    while (abs(delta.x) > max_delta || abs(delta.y) > max_delta) {
+        // adjust speed
+        int ax = 0;
+        if (delta.x > 0 && vel.x < max_vel) ax = 1;
+        else if (delta.x < 0 && vel.x > -max_vel) ax = -1;
+        int ay = 0;
+        if (delta.y > 0 && vel.y < max_vel) ay = 1;
+        else if (delta.y < 0 && vel.y > -max_vel) ay = -1;
+        vel.x += ax;
+        vel.y += ay;
+        if (sol)
+            sol->push_back(cmd_map[ax+1][ay+1]);
+        delta.x -= vel.x;
+        delta.y -= vel.y;
+        pre_steps++;
+    }
+
     ass(delta.x >= -max_delta);
     ass(delta.x <= max_delta);
     ass(delta.y >= -max_delta);
@@ -206,7 +225,7 @@ pair<int, IPoint> solve_step(IPoint delta, IPoint vel, IPoint delta2, Solution *
                 for (int j = 0; j < i; j++)
                     sol->push_back(cmd_map[cx[j]+1][cy[j]+1]);
             }
-            return {i, {vx, vy}};
+            return {i + pre_steps, {vx, vy}};
         }
     }
     ass(false);
@@ -226,6 +245,23 @@ int score_permutation(const Permutation &p, Solution *sol = nullptr) {
         vel = nvel;
     }
     return res;
+}
+
+static vector<vector<int>> nearest;
+
+void init_nearest()
+{
+    if (nearest.empty()) {
+        int n = pts.size();
+        nearest.resize(n);
+        for (int i = 0; i < n; i++) {
+            vector<pair<LL, int>> t;
+            for (int j = 0; j < n; j++) if (j != i)
+                t.push_back({pts[i].sqd(pts[j]), j});
+            sort(t.begin(), t.end());
+            for (auto x : t) nearest[i].push_back(x.second);
+        }
+    }
 }
 
 Permutation get_neighbor(const Permutation &base) {
@@ -253,19 +289,7 @@ Permutation get_neighbor(const Permutation &base) {
         }
     }
 
-    static vector<vector<int>> nearest;
-
-    if (nearest.empty()) {
-        int n = pts.size();
-        nearest.resize(n);
-        for (int i = 0; i < n; i++) {
-            vector<pair<int, int>> t;
-            for (int j = 0; j < n; j++) if (j != i)
-                t.push_back({pts[i].sqd(pts[j]), j});
-            sort(t.begin(), t.end());
-            for (auto x : t) nearest[i].push_back(x.second);
-        }
-    }
+    init_nearest();
 
     if (t == 2) {
         // attract
@@ -301,14 +325,43 @@ Solution solve_sa() {
     vector<int> best_perm;
     vector<int> a;
     int n = (int)pts.size();
-    for (int i = 0; i < n; i++)
-        a.push_back(i);
-    shuffle(a.begin(), a.end(), RGEN);
+    if (problem_id == 11) {
+        for (int i = 0; i < n; i++)
+            a.push_back(i);
+    } else if (n < 500) {
+        for (int i = 0; i < n; i++)
+            a.push_back(i);
+        shuffle(a.begin(), a.end(), RGEN);
+    } else {
+        init_nearest();
+        vector<int> used(n);
+        int start_idx = -1;
+        LL min_d = (LL)inf * inf;
+        IPoint c = {0, 0};
+        for (int i = 0; i < n; i++) {
+            LL d = c.sqd(pts[i]);
+            if (d < min_d) {
+                min_d = d;
+                start_idx = i;
+            }
+        }
+        int cur = start_idx;
+        for (int i = 0; i < n; i++) {
+            a.push_back(cur);
+            used[cur] = 1;
+            int next = -1;
+            for (int t : nearest[cur]) if (!used[t]) {
+                next = t;
+                break;
+            }
+            cur = next;
+        }
+    }
 
     fprintf(stderr, "Starting hill climbing\n");
     auto cur_score = score_permutation(a);
     // phase 1: hill climbing
-    int hill_iter = 100000;
+    int hill_iter = 100000 * 100 / n;
     for (int it = 0; it < hill_iter; it++) {
         auto ne = get_neighbor(a);
         auto t = score_permutation(ne);
@@ -361,6 +414,10 @@ Solution solve_sa() {
         }
     }
     Solution res;
+    if (best_score > 1000000) {
+        fprintf(stderr, "solution is too long!\n");
+        exit(111);
+    }
     int t = score_permutation(best_perm, &res);
     fprintf(stderr, "final score %d\n", t);
     return format("solve spaceship%d ", problem_id) + res;

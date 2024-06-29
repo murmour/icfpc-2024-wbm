@@ -13,24 +13,24 @@ type expr =
   | B of bool
   | I of int
   | S of string
-  | UNeg of int_expr
-  | UNot of bool_expr
+  | Neg of int_expr
+  | Not of bool_expr
   | StoI of string_expr
   | ItoS of int_expr
-  | BAdd of int_expr * int_expr
-  | BSub of int_expr * int_expr
-  | BMul of int_expr * int_expr
-  | BDiv of int_expr * int_expr
-  | BMod of int_expr * int_expr
-  | BLt of int_expr * int_expr
-  | BGt of int_expr * int_expr
-  | BEq of expr(* BIS *) * expr(* BIS *)
-  | BOr of bool_expr * bool_expr
-  | BAnd of bool_expr * bool_expr
-  | BConc of string_expr * string_expr
+  | Add of int_expr * int_expr
+  | Sub of int_expr * int_expr
+  | Mul of int_expr * int_expr
+  | Div of int_expr * int_expr
+  | Mod of int_expr * int_expr
+  | Lt of int_expr * int_expr
+  | Gt of int_expr * int_expr
+  | Eq of expr(* BIS *) * expr(* BIS *)
+  | Or of bool_expr * bool_expr
+  | And of bool_expr * bool_expr
+  | Conc of string_expr * string_expr
   | Take of int_expr * string_expr
   | Drop of int_expr * string_expr
-  | If of { cond: bool_expr; thn: expr; els: expr }
+  | If of bool_expr * expr * expr
   | App of expr * expr
   | Lam of var * expr
   | Var of var
@@ -68,16 +68,19 @@ let decode_int (s: string) : int =
 
 let encode_int (i: int) : string =
   assert (i >= 0);
-  let b = BF.create 20 in
-  let n = ref i in
-  while !n > 0 do
-    let i = !n mod 94 in
-    BF.add_char b (Char.chr (i + 33));
-    n := !n / 94
-  done;
-  let s = Buffer.contents b in
-  let len = S.length s in
-  S.init len (fun i -> String.get s (len-i-1))
+  if i = 0 then
+    S.make 1 (Char.chr 33)
+  else
+    let b = BF.create 20 in
+    let n = ref i in
+    while !n > 0 do
+      let i = !n mod 94 in
+      BF.add_char b (Char.chr (i + 33));
+      n := !n / 94
+    done;
+    let s = Buffer.contents b in
+    let len = S.length s in
+    S.init len (fun i -> String.get s (len-i-1))
 
 
 (* Parsing
@@ -100,8 +103,8 @@ let parse_expr (s: string) : (expr, string) result =
       | 'U' ->
           incr i;
           begin match s.[!i] with
-            | '-' -> incr i; UNeg (expr ())
-            | '!' -> incr i; UNot (expr ())
+            | '-' -> incr i; Neg (expr ())
+            | '!' -> incr i; Not (expr ())
             | '#' -> incr i; StoI (expr ())
             | '$' -> incr i; ItoS (expr ())
             | c -> err (sprintf "unexpected %c at %d\n" c !i)
@@ -109,17 +112,17 @@ let parse_expr (s: string) : (expr, string) result =
       | 'B' ->
           incr i;
           begin match s.[!i] with
-            | '+' -> incr i; let l = expr () in let r = expr () in BAdd (l, r)
-            | '-' -> incr i; let l = expr () in let r = expr () in BSub (l, r)
-            | '*' -> incr i; let l = expr () in let r = expr () in BMul (l, r)
-            | '/' -> incr i; let l = expr () in let r = expr () in BDiv (l, r)
-            | '%' -> incr i; let l = expr () in let r = expr () in BMod (l, r)
-            | '<' -> incr i; let l = expr () in let r = expr () in BLt (l, r)
-            | '>' -> incr i; let l = expr () in let r = expr () in BGt (l, r)
-            | '=' -> incr i; let l = expr () in let r = expr () in BEq (l, r)
-            | '|' -> incr i; let l = expr () in let r = expr () in BOr (l, r)
-            | '&' -> incr i; let l = expr () in let r = expr () in BAnd (l, r)
-            | '.' -> incr i; let l = expr () in let r = expr () in BConc (l, r)
+            | '+' -> incr i; let l = expr () in let r = expr () in Add (l, r)
+            | '-' -> incr i; let l = expr () in let r = expr () in Sub (l, r)
+            | '*' -> incr i; let l = expr () in let r = expr () in Mul (l, r)
+            | '/' -> incr i; let l = expr () in let r = expr () in Div (l, r)
+            | '%' -> incr i; let l = expr () in let r = expr () in Mod (l, r)
+            | '<' -> incr i; let l = expr () in let r = expr () in Lt (l, r)
+            | '>' -> incr i; let l = expr () in let r = expr () in Gt (l, r)
+            | '=' -> incr i; let l = expr () in let r = expr () in Eq (l, r)
+            | '|' -> incr i; let l = expr () in let r = expr () in Or (l, r)
+            | '&' -> incr i; let l = expr () in let r = expr () in And (l, r)
+            | '.' -> incr i; let l = expr () in let r = expr () in Conc (l, r)
             | 'T' -> incr i; let l = expr () in let r = expr () in Take (l, r)
             | 'D' -> incr i; let l = expr () in let r = expr () in Drop (l, r)
             | '$' -> incr i; let l = expr () in let r = expr () in App (l, r)
@@ -130,7 +133,7 @@ let parse_expr (s: string) : (expr, string) result =
           let cond = expr () in
           let thn = expr () in
           let els = expr () in
-          If { cond; thn; els }
+          If (cond, thn, els)
       | 'L' ->
           incr i;
           let var = int () in
@@ -160,34 +163,68 @@ let parse_expr (s: string) : (expr, string) result =
 (* Printing
    -------------------------------------------------------------------------- *)
 
-let rec print_expr (e: expr) : string =
-  match e with
+let print_expr (e: expr) : string =
+  let rec aux: expr -> string = function
     | B true -> "t"
     | B false -> "f"
     | I i -> string_of_int i
     | S s -> sprintf "\"%s\"" s
-    | UNeg e -> sprintf "-(%s)" (print_expr e)
-    | UNot e -> sprintf "not %s" (print_expr e)
-    | StoI e -> sprintf "stoi %s" (print_expr e)
-    | ItoS e -> sprintf "itos %s" (print_expr e)
-    | BAdd (a, b) -> sprintf "%s + %s" (print_expr a) (print_expr b)
-    | BSub (a, b) -> sprintf "%s - %s" (print_expr a) (print_expr b)
-    | BMul (a, b) -> sprintf "%s * %s" (print_expr a) (print_expr b)
-    | BDiv (a, b) -> sprintf "%s / %s" (print_expr a) (print_expr b)
-    | BMod (a, b) -> sprintf "%s mod %s" (print_expr a) (print_expr b)
-    | BLt (a, b) -> sprintf "%s < %s" (print_expr a) (print_expr b)
-    | BGt (a, b) -> sprintf "%s > %s" (print_expr a) (print_expr b)
-    | BEq (a, b) -> sprintf "%s = %s" (print_expr a) (print_expr b)
-    | BOr (a, b) -> sprintf "%s || %s" (print_expr a) (print_expr b)
-    | BAnd (a, b) -> sprintf "%s && %s" (print_expr a) (print_expr b)
-    | BConc (a, b) -> sprintf "%s ^ %s" (print_expr a) (print_expr b)
-    | Take (a, b) -> sprintf "take %s %s" (print_expr a) (print_expr b)
-    | Drop (a, b) -> sprintf "drop %s %s" (print_expr a) (print_expr b)
-    | If { cond; thn; els } ->
-        sprintf "if %s %s %s" (print_expr cond) (print_expr thn) (print_expr els)
-    | App (a, b) -> sprintf "%s(%s)" (print_expr a) (print_expr b)
-    | Lam (v, e) -> sprintf "(fun v%d -> %s)" v (print_expr e)
+    | Neg e -> sprintf "-(%s)" (aux e)
+    | Not e -> sprintf "not %s" (aux e)
+    | StoI e -> sprintf "stoi %s" (aux e)
+    | ItoS e -> sprintf "itos %s" (aux e)
+    | Add (a, b) -> sprintf "%s + %s" (aux a) (aux b)
+    | Sub (a, b) -> sprintf "%s - %s" (aux a) (aux b)
+    | Mul (a, b) -> sprintf "%s * %s" (aux a) (aux b)
+    | Div (a, b) -> sprintf "%s / %s" (aux a) (aux b)
+    | Mod (a, b) -> sprintf "%s mod %s" (aux a) (aux b)
+    | Lt (a, b) -> sprintf "%s < %s" (aux a) (aux b)
+    | Gt (a, b) -> sprintf "%s > %s" (aux a) (aux b)
+    | Eq (a, b) -> sprintf "%s = %s" (aux a) (aux b)
+    | Or (a, b) -> sprintf "%s || %s" (aux a) (aux b)
+    | And (a, b) -> sprintf "%s && %s" (aux a) (aux b)
+    | Conc (a, b) -> sprintf "%s ^ %s" (aux a) (aux b)
+    | Take (a, b) -> sprintf "take %s %s" (aux a) (aux b)
+    | Drop (a, b) -> sprintf "drop %s %s" (aux a) (aux b)
+    | If (cond, thn, els) ->
+        sprintf "if %s %s %s" (aux cond) (aux thn) (aux els)
+    | App (a, b) -> sprintf "%s(%s)" (aux a) (aux b)
+    | Lam (v, e) -> sprintf "(fun v%d -> %s)" v (aux e)
     | Var v -> sprintf "v%d" v
+  in
+  aux e
+
+
+let print_icfp (e: expr) : string =
+  let rec aux: expr -> string = function
+    | B true -> "T"
+    | B false -> "F"
+    | I i -> sprintf "I%s" (encode_int i)
+    | S s -> sprintf "S%s" (encode_string s)
+    | Neg e -> sprintf "U- %s" (aux e)
+    | Not e -> sprintf "U! %s" (aux e)
+    | StoI e -> sprintf "# %s" (aux e)
+    | ItoS e -> sprintf "$ %s" (aux e)
+    | Add (a, b) -> sprintf "B+ %s %s" (aux a) (aux b)
+    | Sub (a, b) -> sprintf "B- %s %s" (aux a) (aux b)
+    | Mul (a, b) -> sprintf "B* %s %s" (aux a) (aux b)
+    | Div (a, b) -> sprintf "B/ %s %s" (aux a) (aux b)
+    | Mod (a, b) -> sprintf "B%% %s %s" (aux a) (aux b)
+    | Lt (a, b) -> sprintf "B< %s %s" (aux a) (aux b)
+    | Gt (a, b) -> sprintf "B> %s %s" (aux a) (aux b)
+    | Eq (a, b) -> sprintf "B= %s %s" (aux a) (aux b)
+    | Or (a, b) -> sprintf "B| %s %s" (aux a) (aux b)
+    | And (a, b) -> sprintf "B& %s %s" (aux a) (aux b)
+    | Conc (a, b) -> sprintf "B. %s %s" (aux a) (aux b)
+    | Take (a, b) -> sprintf "BT %s %s" (aux a) (aux b)
+    | Drop (a, b) -> sprintf "BD %s %s" (aux a) (aux b)
+    | If (cond, thn, els) ->
+        sprintf "? %s %s %s" (aux cond) (aux thn) (aux els)
+    | App (a, b) -> sprintf "B$ %s %s" (aux a) (aux b)
+    | Lam (v, e) -> sprintf "L%s %s" (encode_int v) (aux e)
+    | Var v -> sprintf "v%s" (encode_int v)
+  in
+  aux e
 
 
 (* Evaluating
@@ -226,15 +263,15 @@ let eval (e: expr) : (eval_res, string) result =
       | B b -> B b
       | I i -> I i
       | S s -> S s
-      | UNeg e ->
+      | Neg e ->
           begin match eval env e with
             | I i -> I (-i)
-            | r -> err (sprintf "UNeg got %s" (pp r))
+            | r -> err (sprintf "Neg got %s" (pp r))
           end
-      | UNot e ->
+      | Not e ->
           begin match eval env e with
             | B b -> B (not b)
-            | r -> err (sprintf "UNot got %s" (pp r))
+            | r -> err (sprintf "Not got %s" (pp r))
           end
       | StoI e ->
           begin match eval env e with
@@ -246,64 +283,64 @@ let eval (e: expr) : (eval_res, string) result =
             | I i -> S (decode_string (encode_int i))
             | r -> err (sprintf "ItoS got %s" (pp r))
           end
-      | BAdd (a, b) ->
+      | Add (a, b) ->
           begin match (eval env a, eval env b) with
             | (I a, I b) -> I (a+b)
-            | (a, b) -> err (sprintf "BAdd got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "Add got %s, %s" (pp a) (pp b))
           end
-      | BSub (a, b) ->
+      | Sub (a, b) ->
           begin match (eval env a, eval env b) with
             | (I a, I b) -> I (a-b)
-            | (a, b) -> err (sprintf "BSub got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "Sub got %s, %s" (pp a) (pp b))
           end
-      | BMul (a, b) ->
+      | Mul (a, b) ->
           begin match (eval env a, eval env b) with
             | (I a, I b) -> I (a*b)
-            | (a, b) -> err (sprintf "BMul got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "Mul got %s, %s" (pp a) (pp b))
           end
-      | BDiv (a, b) ->
+      | Div (a, b) ->
           begin match (eval env a, eval env b) with
             | (I a, I b) -> I (a/b)
-            | (a, b) -> err (sprintf "BDiv got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "Div got %s, %s" (pp a) (pp b))
           end
-      | BMod (a, b) ->
+      | Mod (a, b) ->
           begin match (eval env a, eval env b) with
             | (I a, I b) -> I (a mod b)
-            | (a, b) -> err (sprintf "BMod got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "Mod got %s, %s" (pp a) (pp b))
           end
-      | BLt (a, b) ->
+      | Lt (a, b) ->
           begin match (eval env a, eval env b) with
             | (I a, I b) -> B (a < b)
-            | (a, b) -> err (sprintf "BLt got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "Lt got %s, %s" (pp a) (pp b))
           end
-      | BGt (a, b) ->
+      | Gt (a, b) ->
           begin match (eval env a, eval env b) with
             | (I a, I b) -> B (a > b)
-            | (a, b) -> err (sprintf "BGt got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "Gt got %s, %s" (pp a) (pp b))
           end
-      | BEq (a, b) ->
+      | Eq (a, b) ->
           begin match (eval env a, eval env b) with
             | (B a, B b) -> B (a = b)
             | (I a, I b) -> B (a = b)
             | (S a, S b) -> B (a = b)
-            | (a, b) -> err (sprintf "BEq got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "Eq got %s, %s" (pp a) (pp b))
           end
-      | BOr (a, b) ->
+      | Or (a, b) ->
           (* todo: short-curcuit (in which direction?) *)
           begin match (eval env a, eval env b) with
             | (B a, B b) -> B (a || b)
-            | (a, b) -> err (sprintf "BOr got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "Or got %s, %s" (pp a) (pp b))
           end
-      | BAnd (a, b) ->
+      | And (a, b) ->
           (* todo: short-curcuit (in which direction?) *)
           begin match (eval env a, eval env b) with
             | (B a, B b) -> B (a && b)
-            | (a, b) -> err (sprintf "BOr got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "Or got %s, %s" (pp a) (pp b))
           end
-      | BConc (a, b) ->
+      | Conc (a, b) ->
           begin match (eval env a, eval env b) with
             | (S a, S b) -> S (a ^ b)
-            | (a, b) -> err (sprintf "BConc got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "Conc got %s, %s" (pp a) (pp b))
           end
       | Take (a, b) ->
           begin match (eval env a, eval env b) with
@@ -315,7 +352,7 @@ let eval (e: expr) : (eval_res, string) result =
             | (I i, S s) -> S (String.sub s i (S.length s - i))
             | (a, b) -> err (sprintf "Take got %s, %s" (pp a) (pp b))
           end
-      | If { cond; thn; els } ->
+      | If (cond, thn, els) ->
           begin match eval env cond with
             | (B true) -> eval env thn
             | (B false) -> eval env els

@@ -12,4 +12,4 @@ solver: json/jsoncpp.o common.o main.o
 	$(CC) $(CFLAGS) $^ -o $@
 
 clean:
-	rm -rf *.o
+	rm -rf *.o json/*.o
