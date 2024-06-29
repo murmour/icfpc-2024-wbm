@@ -160,34 +160,68 @@ let parse_expr (s: string) : (expr, string) result =
 (* Printing
    -------------------------------------------------------------------------- *)
 
-let rec print_expr (e: expr) : string =
-  match e with
+let print_expr (e: expr) : string =
+  let rec aux: expr -> string = function
     | B true -> "t"
     | B false -> "f"
     | I i -> string_of_int i
     | S s -> sprintf "\"%s\"" s
-    | Neg e -> sprintf "-(%s)" (print_expr e)
-    | Not e -> sprintf "not %s" (print_expr e)
-    | StoI e -> sprintf "stoi %s" (print_expr e)
-    | ItoS e -> sprintf "itos %s" (print_expr e)
-    | Add (a, b) -> sprintf "%s + %s" (print_expr a) (print_expr b)
-    | Sub (a, b) -> sprintf "%s - %s" (print_expr a) (print_expr b)
-    | Mul (a, b) -> sprintf "%s * %s" (print_expr a) (print_expr b)
-    | Div (a, b) -> sprintf "%s / %s" (print_expr a) (print_expr b)
-    | Mod (a, b) -> sprintf "%s mod %s" (print_expr a) (print_expr b)
-    | Lt (a, b) -> sprintf "%s < %s" (print_expr a) (print_expr b)
-    | Gt (a, b) -> sprintf "%s > %s" (print_expr a) (print_expr b)
-    | Eq (a, b) -> sprintf "%s = %s" (print_expr a) (print_expr b)
-    | Or (a, b) -> sprintf "%s || %s" (print_expr a) (print_expr b)
-    | And (a, b) -> sprintf "%s && %s" (print_expr a) (print_expr b)
-    | Conc (a, b) -> sprintf "%s ^ %s" (print_expr a) (print_expr b)
-    | Take (a, b) -> sprintf "take %s %s" (print_expr a) (print_expr b)
-    | Drop (a, b) -> sprintf "drop %s %s" (print_expr a) (print_expr b)
+    | Neg e -> sprintf "-(%s)" (aux e)
+    | Not e -> sprintf "not %s" (aux e)
+    | StoI e -> sprintf "stoi %s" (aux e)
+    | ItoS e -> sprintf "itos %s" (aux e)
+    | Add (a, b) -> sprintf "%s + %s" (aux a) (aux b)
+    | Sub (a, b) -> sprintf "%s - %s" (aux a) (aux b)
+    | Mul (a, b) -> sprintf "%s * %s" (aux a) (aux b)
+    | Div (a, b) -> sprintf "%s / %s" (aux a) (aux b)
+    | Mod (a, b) -> sprintf "%s mod %s" (aux a) (aux b)
+    | Lt (a, b) -> sprintf "%s < %s" (aux a) (aux b)
+    | Gt (a, b) -> sprintf "%s > %s" (aux a) (aux b)
+    | Eq (a, b) -> sprintf "%s = %s" (aux a) (aux b)
+    | Or (a, b) -> sprintf "%s || %s" (aux a) (aux b)
+    | And (a, b) -> sprintf "%s && %s" (aux a) (aux b)
+    | Conc (a, b) -> sprintf "%s ^ %s" (aux a) (aux b)
+    | Take (a, b) -> sprintf "take %s %s" (aux a) (aux b)
+    | Drop (a, b) -> sprintf "drop %s %s" (aux a) (aux b)
     | If (cond, thn, els) ->
-        sprintf "if %s %s %s" (print_expr cond) (print_expr thn) (print_expr els)
-    | App (a, b) -> sprintf "%s(%s)" (print_expr a) (print_expr b)
-    | Lam (v, e) -> sprintf "(fun v%d -> %s)" v (print_expr e)
+        sprintf "if %s %s %s" (aux cond) (aux thn) (aux els)
+    | App (a, b) -> sprintf "%s(%s)" (aux a) (aux b)
+    | Lam (v, e) -> sprintf "(fun v%d -> %s)" v (aux e)
     | Var v -> sprintf "v%d" v
+  in
+  aux e
+
+
+let print_icfp (e: expr) : string =
+  let rec aux: expr -> string = function
+    | B true -> "T"
+    | B false -> "F"
+    | I i -> sprintf "I%s" (encode_int i)
+    | S s -> sprintf "S%s" (encode_string s)
+    | Neg e -> sprintf "U- %s" (aux e)
+    | Not e -> sprintf "U! %s" (aux e)
+    | StoI e -> sprintf "# %s" (aux e)
+    | ItoS e -> sprintf "$ %s" (aux e)
+    | Add (a, b) -> sprintf "B+ %s %s" (aux a) (aux b)
+    | Sub (a, b) -> sprintf "B- %s %s" (aux a) (aux b)
+    | Mul (a, b) -> sprintf "B* %s %s" (aux a) (aux b)
+    | Div (a, b) -> sprintf "B/ %s %s" (aux a) (aux b)
+    | Mod (a, b) -> sprintf "B%% %s %s" (aux a) (aux b)
+    | Lt (a, b) -> sprintf "B< %s %s" (aux a) (aux b)
+    | Gt (a, b) -> sprintf "B> %s %s" (aux a) (aux b)
+    | Eq (a, b) -> sprintf "B= %s %s" (aux a) (aux b)
+    | Or (a, b) -> sprintf "B| %s %s" (aux a) (aux b)
+    | And (a, b) -> sprintf "B& %s %s" (aux a) (aux b)
+    | Conc (a, b) -> sprintf "B. %s %s" (aux a) (aux b)
+    | Take (a, b) -> sprintf "BT %s %s" (aux a) (aux b)
+    | Drop (a, b) -> sprintf "BD %s %s" (aux a) (aux b)
+    | If (cond, thn, els) ->
+        sprintf "? %s %s %s" (aux cond) (aux thn) (aux els)
+    | App (a, b) -> sprintf "B$ %s %s" (aux a) (aux b)
+    | Lam (v, e) -> sprintf "L%s %s" (encode_int v) (aux e)
+    | Var v -> sprintf "v%s" (encode_int v)
+  in
+  aux e
 
 
 (* Evaluating
