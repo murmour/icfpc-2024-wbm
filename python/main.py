@@ -37,13 +37,24 @@ def create_folders(task_name, cnt):
         fname = '../../data/out/%s/%02d' % (task_name, n)
         os.makedirs(fname, exist_ok=True)
 
+def submit(task, pid, tag):
+    fname = '../../data/out/%s/%02d/%s.sol' % (task, pid, tag)
+    with io.open(fname) as f:
+        data = f.read()
+    res = interact(data)
+    print(res)
+
+def submit_spaceship(pid):
+    submit("spaceship", pid, "first")
+
 
 def main():
     #download_lambdaman()
     #download_spaceship()
-    download_3d()
+    #download_3d()
     #create_folders("spaceship", 25)
     #create_folders("lambdaman", 21)
+    submit_spaceship(13)
 
 
 if __name__ == "__main__":
