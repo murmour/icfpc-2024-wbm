@@ -6,7 +6,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/solver",
-            "args": ["-p", "034", "-out", "test.solution", "-s", "xsa", "-temp", "2200", "-time", "5"],
+            "args": ["-p", "02", "-out", "test.solution", "-s", "sa"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
