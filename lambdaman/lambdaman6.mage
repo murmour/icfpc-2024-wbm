@@ -3,5 +3,5 @@
 let magic =
   "solve lambdaman6 " ^
   let d x = x ^ x ^ x in
-  d (d d ((d "RRR")))
+  d (d (d (d "RRR")))
 ;
