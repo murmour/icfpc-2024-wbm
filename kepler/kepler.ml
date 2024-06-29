@@ -68,16 +68,19 @@ let decode_int (s: string) : int =
 
 let encode_int (i: int) : string =
   assert (i >= 0);
-  let b = BF.create 20 in
-  let n = ref i in
-  while !n > 0 do
-    let i = !n mod 94 in
-    BF.add_char b (Char.chr (i + 33));
-    n := !n / 94
-  done;
-  let s = Buffer.contents b in
-  let len = S.length s in
-  S.init len (fun i -> String.get s (len-i-1))
+  if i = 0 then
+    S.make 1 (Char.chr 33)
+  else
+    let b = BF.create 20 in
+    let n = ref i in
+    while !n > 0 do
+      let i = !n mod 94 in
+      BF.add_char b (Char.chr (i + 33));
+      n := !n / 94
+    done;
+    let s = Buffer.contents b in
+    let len = S.length s in
+    S.init len (fun i -> String.get s (len-i-1))
 
 
 (* Parsing
