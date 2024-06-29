@@ -1,0 +1,7 @@
+(* score: 153 *)
+
+let magic =
+  "solve lambdaman8 " ^
+  (fun f -> f ((f "D") ^ (f "L") ^ (f "U") ^ (f "R")))
+  (fun y -> (fun x -> x (x (x (x (x (x (x y))))))) (fun x -> x ^ x))
+;
