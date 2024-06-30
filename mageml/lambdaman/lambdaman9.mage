@@ -1,7 +1,7 @@
-(* score: 131 (best: 109) *)
+(* score: 125 (best: 109) *)
 
-let dup s = s ^ s;
-let qup s = dup (dup (dup (dup (dup s))));
+let dup s = s ^ s ^ s;
+let qup s = dup (dup (dup s));
 
 let magic =
   "solve lambdaman9 " ^ qup (qup "RR" ^ "D" ^ qup "LL" ^ "D");
