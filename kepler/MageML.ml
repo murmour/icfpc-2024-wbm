@@ -40,6 +40,14 @@ let compile_expr (env: env) (e: ML.expr) : (K.expr, string) result =
     | If (cond, thn, els) -> If (expr env cond, expr env thn, expr env els)
     | App [] ->
         assert false
+    | App [ Var "take"; a; b ] ->
+        Take (expr env a, expr env b)
+    | App [ Var "drop"; a; b ] ->
+        Drop (expr env a, expr env b)
+    | App [ Var "stoi"; a ] ->
+        StoI (expr env a)
+    | App [ Var "itos"; a ] ->
+        ItoS (expr env a)
     | App (x :: xs) ->
         let e = ref (expr env x) in
         xs |> L.iter (fun x -> e := App (!e, expr env x));
