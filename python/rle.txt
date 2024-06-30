@@ -5,15 +5,13 @@
 ----- --
 count  C
 
-count - количество повторений (bitlength = block_size - char_size)
+count - количество повторений (bitlength = count_size)
 C - символ (bitlength = char_size)
 
-1         <= char_size  <= 8
-char_size <= block_size <= 64
+char_size  >= 1
+count_size >= 1
 
-
-char_size = 2, block_size = 4:
-
+char_size = 2, count_size = 4:
 11 00   11 01   10 10   01 11 = UUURRRDDL
 -- --   -- --   -- --   -- --
  3  U    3  R    2  D    1  L
@@ -21,3 +19,16 @@ char_size = 2, block_size = 4:
 11 00   01 00 = UUUU
 -- --   -- --
  3  U    1  U
+
+
+Скрипт rle:
+Берет путь для прохода из ../../data/out/lambdaman/{N}/{N}.amaze
+Берет шаблон программы из ../../data/out/lambdaman/icfp.tmpl
+В качестве переменных подставляет:
+{command} - команда "solve lambdamanN"
+{answer} - base94-число с ответом (может быть гигантским)
+{block_p} - сдвиг одного блока (1 << (count_size + char_size))
+{count_p} - сдвиг числа повторений (1 << count_size)
+
+В процессе работы подбирает наиболее компактный размер для {answer} через перебор {count_size}.
+Готовая программа загружается в файл ../../data/out/lambdamaan/{N}/{N}_gen.icfp и отправляется на сервер.
