@@ -26,6 +26,7 @@ type expr =
   | App of expr * expr
   | Lam of var * expr
   | Var of var
+  | Trace of var
 
 and int_expr = expr
 and string_expr = expr

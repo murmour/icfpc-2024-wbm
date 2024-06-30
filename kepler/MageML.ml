@@ -48,6 +48,11 @@ let compile_expr (env: env) (e: ML.expr) : (K.expr, string) result =
         StoI (expr env a)
     | App [ Var "itos"; a ] ->
         ItoS (expr env a)
+    | App [ Var "trace"; Var v ] ->
+        (try
+           Trace (env.map |> SM.find v)
+         with Not_found ->
+           err (sprintf "Invalid reference: %s" v))
     | App (x :: xs) ->
         let e = ref (expr env x) in
         xs |> L.iter (fun x -> e := App (!e, expr env x));

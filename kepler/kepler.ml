@@ -5,6 +5,7 @@ module S = String
 module IM = Map.Make (Int)
 
 let sprintf = Printf.sprintf
+let eprintf = Printf.eprintf
 
 
 type var = int
@@ -34,6 +35,7 @@ type expr =
   | App of expr * expr
   | Lam of var * expr
   | Var of var
+  | Trace of var
 
 and int_expr = expr
 and string_expr = expr
@@ -191,6 +193,7 @@ let print_expr (e: expr) : string =
     | App (a, b) -> sprintf "(%s(%s))" (aux a) (aux b)
     | Lam (v, e) -> sprintf "(fun v%d -> %s)" v (aux e)
     | Var v -> sprintf "v%d" v
+    | Trace v -> sprintf "trace(%d)" v
   in
   aux e
 
@@ -223,6 +226,7 @@ let print_icfp (e: expr) : string =
     | App (a, b) -> sprintf "B$ %s %s" (aux a) (aux b)
     | Lam (v, e) -> sprintf "L%s %s" (encode_int v) (aux e)
     | Var v -> sprintf "v%s" (encode_int v)
+    | Trace v -> sprintf "v%s" (encode_int v) (* for compatibility *)
   in
   aux e
 
@@ -364,6 +368,14 @@ let eval (e: expr) : (eval_res, string) result =
       | Var v ->
           begin match IM.find_opt v env with
             | Some e -> Lazy.force e
+            | None -> err (sprintf "Unbound var: %d" v)
+          end
+      | Trace v ->
+          begin match IM.find_opt v env with
+            | Some e ->
+                let res = Lazy.force e in
+                eprintf "var %d = %s\n" v (print_res res);
+                res
             | None -> err (sprintf "Unbound var: %d" v)
           end
       | App (a, b) ->
