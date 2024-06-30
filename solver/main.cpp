@@ -19,6 +19,7 @@ void __never(int a){printf("\nOPS %d", a);}
 
 template<typename T> T Sqr(const T &x) { return x * x; }
 typedef long long LL;
+typedef unsigned long long u64;
 
 using namespace std;
 
@@ -172,88 +173,115 @@ const char* cmd_map[3] = {"147", "258", "369"};
 namespace precise {
 
     const int max_v = 25;
-    const int max_delta = 2000;
-    const int max_steps = 100;
+    const int max_delta = 1000;
+    const int max_steps = 60;
 
     const int D = 2 * max_delta + 1;
     const int V = 2 * max_v + 1;
 
-    int dp[V][D][max_steps]; // 0 = inaccessible, 1..3 => -1..1
+    u64 dpx[V][V][D];
     //int from[V][D][max_steps];
 
     bool dp_init = false;
 
-    inline void mark(int v, int d, int step, int acc) {
+    inline void mark(int v0, int v, int d, u64 mask) {
         if (v >= 0 && v < V && d >= 0 && d <= D) {
-            dp[v][d][step] = acc;
+            dpx[v0][v][d] = dpx[v0][v][d] | mask;
         }
     }
 
-    inline bool get_dp(int v, int d, int step) {
-        v += max_v;
-        d += max_delta;
-        if (v < 0 || v >= V || d < 0 || d >= D) return false;
-        return dp[v][d][step] != 0;
-    }
+    // inline bool get_dp(int v0, int v, int d, int step) {
+    //     v += max_v;
+    //     d += max_delta;
+    //     if (v < 0 || v >= V || d < 0 || d >= D) return false;
+    //     return dp[v][d][step] != 0;
+    // }
 
     void init_dp_precise() {
         if (dp_init) return;
         dp_init = true;
         memset(dp, 0, sizeof(dp));
-        dp[max_v][max_delta][0] = 2;
+        for (int v0 = 0; v0 < V; v0++)
+            dpx[v0][v0][max_delta] = 1;
 
         for (int i = 0; i + 1 < max_steps; i++) {
-            for (int v = 0; v < V; v++)
-                for (int d = 0; d < D; d++)
-                    if (dp[v][d][i]) {
-                        int vr = v - max_v;
-                        mark(v-1, d+vr-1, i+1, 1);
-                        mark(v, d+vr, i+1, 2);
-                        mark(v+1, d+vr+1, i+1, 3);
-                    }
+            u64 mask1 = 1ull << i;
+            u64 mask2 = 1ull << (i + 1);
+            for (int v0 = 0; v0 < V; v0++)
+                for (int v = 0; v < V; v++)
+                    for (int d = 0; d < D; d++)
+                        if (dpx[v0][v][d] & mask1) {
+                            int vr = v - max_v;
+                            mark(v0, v-1, d+vr-1, mask2);
+                            mark(v0, v, d+vr, mask2);
+                            mark(v0, v+1, d+vr+1, mask2);
+                        }
         }
     }
 
-    vector<int> get_commands_1d(int v0, int delta0, int steps) {
-        int v = v0 + max_v;
-        int delta = delta0 + max_delta;
+    vector<int> get_commands_1d(int v0, int v1, int delta, int steps) {
+        v0 += max_v;
+        v1 += max_v;
+        delta += max_delta;
         vector<int> res;
         for (int i = steps; i > 0; i--) {
-            int acc = dp[v][delta][i] - 2;
+            // acc = 0?
+            int pmask = 1ull << (i - 1);
+            int real_v = v1 - max_v;
+            int pdelta = delta - real_v;
+            ass(pdelta >= 0 && pdelta <= D);
+            int acc;
+            if (dpx[v0][v1][pdelta] & pmask)
+                acc = 0;
+            else if (v1 > 0 && dpx[v0][v1-1][pdelta] & pmask)
+                acc = 1;
+            else if (v1 + 1 < V && dpx[v0][v1+1][pdelta] & pmask)
+                acc = -1;
+            else
+                ass(false);
             res.push_back(acc);
-            delta -= (v - max_v);
-            v -= acc;
+            delta -= (v1 - max_v);
+            v1 -= acc;
         }
         ass(delta == max_delta);
-        ass(v == max_v);
+        ass(v1 == v0);
         reverse(res.begin(), res.end());
         return res;
     }
 
-    int get_moves(IPoint delta, IPoint v1, IPoint v2, Solution *sol = nullptr) {
-        if (delta.x == 0 && delta.y == 0) return 0;
-        for (int step = 1; step < max_steps; step++) {
-            if (get_dp(v2.x - v1.x, delta.x - v1.x * step, step) &&
-                get_dp(v2.y - v1.y, delta.y - v1.y * step, step)) {
-                    if (sol) {
-                        auto cx = get_commands_1d(v2.x - v1.x, delta.x - v1.x * step, step);
-                        auto cy = get_commands_1d(v2.y - v1.y, delta.y - v1.y * step, step);
-                        for (int j = 0; j < step; j++)
-                            sol->push_back(cmd_map[cx[j]+1][cy[j]+1]);
-                    }
-                    return step;
-                }
+    int get_moves(IPoint delta_adj, IPoint v1, IPoint v2, Solution *sol = nullptr) {
+        //int dx = delta.x + max_delta;
+        //ass(dx >= 0 && dx <= D);
+        //int dy = delta.y + max_delta;
+        //ass(dy > 0 && dy <= D);
+        int dx = delta_adj.x;
+        int dy = delta_adj.y;
+
+        auto mask1 = dpx[v1.x + max_v][v2.x + max_v][dx];
+        if (mask1 == 0) return inf;
+        auto mask = dpx[v1.y + max_v][v2.y + max_v][dy] & mask1;
+        if (mask == 0) return inf;
+        int res = std::__countr_zero(mask);
+        if (sol) {
+            auto cx = get_commands_1d(v1.x, v2.x, delta_adj.x - max_delta, res);
+            auto cy = get_commands_1d(v1.y, v2.y, delta_adj.y - max_delta, res);
+            for (int j = 0; j < res; j++)
+                sol->push_back(cmd_map[cx[j]+1][cy[j]+1]);
         }
-        return inf;
+        return res;
     }
 
-    const int wnd = 10;
+    const int wnd = 15;
     const int W = wnd * 2 + 1;
     int thr = 3;
     const int MAX_PTS = 66000;
 
     int dpp[MAX_PTS][W][W];
     IPoint from[MAX_PTS][W][W];
+
+    inline bool is_valid_delta(IPoint p) {
+        return p.x >= 0 && p.x < D && p.y >= 0 && p.y < D;
+    }
 
     int score_permutation(const Permutation &p, Solution *sol = nullptr) {
         init_dp_precise();
@@ -264,10 +292,13 @@ namespace precise {
                     dpp[i][x][y] = inf;
 
         IPoint offset = {wnd, wnd};
+        IPoint delta_offset = {max_delta, max_delta};
+        IPoint delta0 = pts[p[0]] + delta_offset;
+        if (!is_valid_delta(delta0)) return inf;
         for (int x = 0; x < W; x++)
             for (int y = 0; y < W; y++)
             {
-                dpp[0][x][y] = get_moves(pts[p[0]], {}, {x - wnd, y - wnd});
+                dpp[0][x][y] = get_moves(delta0, {}, {x - wnd, y - wnd});
                 from[0][x][y] = offset;
             }
 
@@ -277,7 +308,9 @@ namespace precise {
                 for (int y = 0; y < W; y++) {
                     best = min(best, dpp[i][x][y]);
                 }
-            auto delta = pts[p[i+1]] - pts[p[i]];
+            auto delta_adj = pts[p[i+1]] - pts[p[i]] + delta_offset;
+            if (!is_valid_delta(delta_adj)) return inf;
+            //if (best < inf) return inf;
             ass(best < inf);
             for (int x = 0; x < W; x++)
                 for (int y = 0; y < W; y++) {
@@ -286,7 +319,7 @@ namespace precise {
                         for (int x1 = 0; x1 < W; x1++)
                             for (int y1 = 0; y1 < W; y1++) {
                                 int &tgt = dpp[i+1][x1][y1];
-                                int t = base + get_moves(delta, {x - wnd, y - wnd}, {x1 - wnd, y1 - wnd});
+                                int t = base + get_moves(delta_adj, {x - wnd, y - wnd}, {x1 - wnd, y1 - wnd});
                                 if (t < tgt) {
                                     tgt = t;
                                     from[i+1][x1][y1] = {x, y};
@@ -312,7 +345,7 @@ namespace precise {
                 auto delta = i > 0 ? pts[p[i]] - pts[p[i-1]] : pts[p[i]];
                 string part;
                 auto v0 = from[i][best_v.x][best_v.y];
-                int t = get_moves(delta, v0 - offset, best_v - offset, &part);
+                int t = get_moves(delta + delta_offset, v0 - offset, best_v - offset, &part);
                 //fprintf(stderr, "part: %s", part.c_str());
                 ass(t < inf);
                 parts.push_back(part);
@@ -792,7 +825,7 @@ Solution solve_sa() {
     } else if (problem_id == 11 || IDENTITY) {
         for (int i = 0; i < n; i++)
             a.push_back(i);
-    } else if (n < 500) {
+    } else if (n < 500 && problem_id != 6 && problem_id != 9 && problem_id != 10 && problem_id != 14) {
         for (int i = 0; i < n; i++)
             a.push_back(i);
         shuffle(a.begin(), a.end(), RGEN);
