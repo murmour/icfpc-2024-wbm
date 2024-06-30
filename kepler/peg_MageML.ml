@@ -1,6 +1,5 @@
 (* this code is produced by magic! do not edit! *)
 
-
 type var = string
 
 type type_ =
@@ -29,7 +28,7 @@ type expr =
   | And of expr * expr
   | Conc of expr * expr
   | If of expr * expr * expr
-  | App of expr * expr
+  | App of expr list
   | Fun of typed_arg list * type_ * expr
   | Let of var * typed_arg list * type_ * expr * expr
   | Var of var
@@ -201,9 +200,16 @@ and gCm _c _i =
 and gCl _c _i =
   match S.read_char _c.s _i with Some c when (c >= 'a' && c <= 'z') || ((c >= 'A' && c <= 'Z') || ((c >= '0' && c <= '9') || (c = '_'))) -> S ((), _i+1) | _ -> F
 and gCk _c _i =
-  match expr6 _c _i with F -> F | S (lhs, _i) -> (match (match S (lhs, _i) with F -> F | S (r0, _i) ->
-  match (if (if S.match_char '-' _c.s _i then S ((), _i+1) else F) <> F then F else expr5 _c _i) with F -> F | S (r1, _i) ->
-  S (App (r0, r1), _i)) with F -> S (lhs, _i) | s -> s)
+  match expr6 _c _i with F -> F | S (lhs, _i) -> (match (match (match S (lhs, _i) with F -> F | S (r1, _i) ->
+  match (match (if (if S.match_char '-' _c.s _i then S ((), _i+1) else F) <> F then F else expr6 _c _i) with F -> F | S (hd, _i) ->
+  let rec iter _i =
+    match (if (if S.match_char '-' _c.s _i then S ((), _i+1) else F) <> F then F else expr6 _c _i) with | F -> ([], _i) | S (r, _i) ->
+    let (l, _i) = iter _i in (r :: l, _i)
+  in
+  let (l, _i) = iter _i in
+  S (hd :: l, _i)) with F -> F | S (r2, _i) ->
+  S (r1 :: r2, _i)) with F -> F | S (r0, _i) ->
+  S (App (r0), _i)) with F -> S (lhs, _i) | s -> s)
 and gCj _c _i =
   match gCi _c _i with F -> gCd _c _i | s -> s
 and gCi _c _i =
