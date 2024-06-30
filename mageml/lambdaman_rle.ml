@@ -43,4 +43,4 @@ let magic =
         else
             ""
     ) in
-    "solve lambdaman4 " ^ (loop1 52647);
+    "solve lambdaman6 " ^ (loop1 52647);
