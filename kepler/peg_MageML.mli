@@ -27,7 +27,7 @@ type expr =
   | And of expr * expr
   | Conc of expr * expr
   | If of expr * expr * expr
-  | App of expr * expr
+  | App of expr list
   | Fun of typed_arg list * type_ * expr
   | Let of var * typed_arg list * type_ * expr * expr
   | Var of var

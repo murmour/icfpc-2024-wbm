@@ -1,5 +1,6 @@
 
 module S = String
+module L = List
 module SM = Map.Make (String)
 
 module K = Kepler
@@ -37,7 +38,12 @@ let compile_expr (env: env) (e: ML.expr) : (K.expr, string) result =
     | And (a, b) -> And (expr env a, expr env b)
     | Conc (a, b) -> Conc (expr env a, expr env b)
     | If (cond, thn, els) -> If (expr env cond, expr env thn, expr env els)
-    | App (a, b) -> App (expr env a, expr env b)
+    | App [] ->
+        assert false
+    | App (x :: xs) ->
+        let e = ref (expr env x) in
+        xs |> L.iter (fun x -> e := App (!e, expr env x));
+        !e
     | Fun (args, _res_type, body) ->
         let rec aux env = function
           | [] ->
@@ -49,10 +55,10 @@ let compile_expr (env: env) (e: ML.expr) : (K.expr, string) result =
         in
         aux env args
     | Let (v, [], res_type, rhs, body) ->
-        expr env (App (Fun ([(v, res_type)], TAny, body), rhs))
+        expr env (App [Fun ([(v, res_type)], TAny, body); rhs])
     | Let (v, args, res_type, rhs, body) ->
         let rhs = ML.Fun (args, res_type, rhs) in
-        expr env (App (Fun ([(v, TAny)], TAny, body), rhs))
+        expr env (App [Fun ([(v, TAny)], TAny, body); rhs])
     | Var v ->
         try
           Var (env.map |> SM.find v)
@@ -72,10 +78,10 @@ let compile_program (p: ML.program) : (K.expr, string) result =
   let env = { map = SM.empty; ct = 0 } in
   let rec desugar: ML.decl list -> ML.expr = function
     | (v, [], res_type, body) :: xs ->
-        App (Fun ([(v, res_type)], TAny, desugar xs), body)
+        App [Fun ([(v, res_type)], TAny, desugar xs); body]
     | (v, args, res_type, body) :: xs ->
         let rhs = ML.Fun (args, res_type, body) in
-        App (Fun ([(v, TAny)], TAny, desugar xs), rhs)
+        App [Fun ([(v, TAny)], TAny, desugar xs); rhs]
     | [] ->
         try
           Var "magic"

@@ -60,7 +60,7 @@ inline rule expr6 =
 
 inline rule expr5 =
   let lhs = expr6 in
-  (App{lhs, !"-" expr5} | lhs)
+  (App{`cons{lhs, (!"-" expr6)+}} | lhs)
 
 inline rule expr4 =
   | Neg{tok{"-"} expr4}
