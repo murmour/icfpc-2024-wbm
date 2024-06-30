@@ -192,6 +192,12 @@ vector<int> get_commands_1d(int v0, int steps, int v1, int delta0) {
 
 const char* cmd_map[3] = {"147", "258", "369"};
 
+inline bool can_overacc(int dist_left, int vel) {
+    dist_left -= vel + 1;
+    int decc_dist = (vel + max_vel) * (vel - max_vel + 1) / 2;
+    return dist_left >= decc_dist;
+}
+
 pair<int, IPoint> solve_step(IPoint delta, IPoint vel, IPoint delta2, Solution *sol) {
     ass(vel.x >= -max_vel);
     ass(vel.x <= max_vel);
@@ -202,11 +208,25 @@ pair<int, IPoint> solve_step(IPoint delta, IPoint vel, IPoint delta2, Solution *
     while (abs(delta.x) > max_delta || abs(delta.y) > max_delta) {
         // adjust speed
         int ax = 0;
-        if (delta.x > 0 && vel.x < max_vel) ax = 1;
-        else if (delta.x < 0 && vel.x > -max_vel) ax = -1;
+        if (delta.x > 0) {
+            if (vel.x < max_vel || can_overacc(delta.x - max_delta, vel.x)) ax = 1;
+            else if (vel.x > max_vel) ax = -1;
+        } else { // delta.x < 0
+            if (vel.x > -max_vel || can_overacc(-max_delta - delta.x, -vel.x)) ax = -1;
+            else if (vel.x < -max_vel) ax = 1;
+        }
+        //if (delta.x > 0 && vel.x < max_vel) ax = 1;
+        //else if (delta.x < 0 && vel.x > -max_vel) ax = -1;
         int ay = 0;
-        if (delta.y > 0 && vel.y < max_vel) ay = 1;
-        else if (delta.y < 0 && vel.y > -max_vel) ay = -1;
+        if (delta.y > 0) {
+            if (vel.y < max_vel || can_overacc(delta.y - max_delta, vel.y)) ay = 1;
+            else if (vel.y > max_vel) ay = -1;
+        } else { // delta.y < 0
+            if (vel.y > -max_vel || can_overacc(-max_delta - delta.y, -vel.y)) ay = -1;
+            else if (vel.y < -max_vel) ay = 1;
+        }
+        //if (delta.y > 0 && vel.y < max_vel) ay = 1;
+        //else if (delta.y < 0 && vel.y > -max_vel) ay = -1;
         vel.x += ax;
         vel.y += ay;
         if (sol)
@@ -216,6 +236,10 @@ pair<int, IPoint> solve_step(IPoint delta, IPoint vel, IPoint delta2, Solution *
         pre_steps++;
     }
 
+    ass(vel.x >= -max_vel);
+    ass(vel.x <= max_vel);
+    ass(vel.y >= -max_vel);
+    ass(vel.y <= max_vel);
     ass(delta.x >= -max_delta);
     ass(delta.x <= max_delta);
     ass(delta.y >= -max_delta);
@@ -339,16 +363,22 @@ namespace naive {
     vector<int> used;
     int real_n;
     string sol;
+    int max_cnt = 0;
+
+    bool M2 = false;
 
     bool naive_rec(IPoint pos, IPoint vel, int cnt) {
+        max_cnt = max(max_cnt, cnt);
         if (cnt >= real_n)
             return true;
+        int opts = 0;
         for (int dir = 0; dir < 9; dir++) {
             auto vel2 = vel;
             vel2.x += dx[dir];
             vel2.y += dy[dir];
             auto pos2 = pos + vel2;
             if (pmap.find(pos2) != pmap.end() && !used[pmap[pos2]]) {
+                opts++;
                 int idx = pmap[pos2];
                 sol.push_back(dc[dir]);
                 used[idx] = 1;
@@ -356,6 +386,29 @@ namespace naive {
                 used[idx] = 0;
                 sol.pop_back();
             }
+        }
+        if (opts == 0 && M2) {
+            for (int dir = 0; dir < 9; dir++)
+                for (int dir2 = 0; dir2 < 9; dir2++) {
+                    auto vel2 = vel;
+                    vel2.x += dx[dir];
+                    vel2.y += dy[dir];
+                    auto pos2 = pos + vel2;
+                    vel2.x += dx[dir2];
+                    vel2.y += dy[dir2];
+                    pos2 = pos2 + vel2;
+                    if (pmap.find(pos2) != pmap.end() && !used[pmap[pos2]]) {
+                        opts++;
+                        int idx = pmap[pos2];
+                        sol.push_back(dc[dir]);
+                        sol.push_back(dc[dir2]);
+                        used[idx] = 1;
+                        if (naive_rec(pos2, vel2, cnt + 1)) return true;
+                        used[idx] = 0;
+                        sol.pop_back();
+                        sol.pop_back();
+                    }
+                }
         }
         return false;
     }
@@ -407,7 +460,7 @@ namespace naive {
         //     cnt++;
         // }
         if (!naive_rec({0, 0}, {0, 0}, cnt)) {
-            fprintf(stderr, "Failed :(\n");
+            fprintf(stderr, "Failed (%d) :(\n", max_cnt);
             exit(112);
         }
         return sol;
@@ -415,12 +468,54 @@ namespace naive {
 
 }
 
+bool IDENTITY = false;
+
+Solution solve_big() {
+    init_dp();
+    int n = (int)pts.size();
+    vector<int> a;
+    vector<int> used(n);
+    int start_idx = -1;
+    LL min_d = (LL)inf * inf;
+    IPoint c = {0, 0};
+    for (int i = 0; i < n; i++) {
+        LL d = c.sqd(pts[i]);
+        if (d < min_d) {
+            min_d = d;
+            start_idx = i;
+        }
+    }
+    int cur = start_idx;
+    for (int i = 0; i < n; i++) {
+        a.push_back(cur);
+        used[cur] = 1;
+        int next = -1;
+        LL min_d = (LL)inf * inf;
+        for (int j = 0; j < n; j++) if (!used[j]) {
+            LL d = pts[cur].sqd(pts[j]);
+            if (d < min_d) {
+                min_d = d;
+                next = j;
+            }
+        }
+        cur = next;
+    }
+    Solution res;
+    int t = score_permutation(a, &res);
+    fprintf(stderr, "final score %d\n", t);
+    if (t > 1000000) {
+        fprintf(stderr, "solution is too long!\n");
+        exit(111);
+    }
+    return res;
+}
+
 Solution solve_sa() {
     int best_score = 0;
     vector<int> best_perm;
     vector<int> a;
     int n = (int)pts.size();
-    if (problem_id == 11) {
+    if (problem_id == 11 || IDENTITY) {
         for (int i = 0; i < n; i++)
             a.push_back(i);
     } else if (n < 500) {
@@ -523,7 +618,10 @@ void solve(const string &infile, const string &solver, const string &fname, ArgP
     Problem p;
     FILE *f = fopen(infile.c_str(), "rt");
     int x, y;
+    set<pair<int, int>> seen;
     while (fscanf(f, "%d%d", &x, &y) > 0) {
+        if (seen.find({x, y}) != seen.end()) continue;
+        seen.insert({x, y});
         pts.push_back({x, y});
     }
     fclose(f);
@@ -534,6 +632,13 @@ void solve(const string &infile, const string &solver, const string &fname, ArgP
         s = solve_sa();
     }
     else if (solver == "naive") {
+        s = naive::solve_naive();
+    }
+    else if (solver == "big") {
+        s = solve_big();
+    }
+    else if (solver == "naive_x2") {
+        naive::M2 = true;
         s = naive::solve_naive();
     }
     else {
@@ -588,6 +693,10 @@ int main(int argc, char *argv[]) {
     }
     if (args.has_option("--stdout")) {
         STDOUT = true;
+    }
+    if (args.has_option("--identity")) {
+        fprintf(stdout, "enabled IDENTITY\n");
+        IDENTITY = true;
     }
 
     solve(in_file, solver, fname, args);
