@@ -36,6 +36,7 @@ type expr =
   | Lam of var * expr
   | Var of var
   | Trace of var
+  | Panic of expr
 
 and int_expr = expr
 and string_expr = expr
@@ -194,6 +195,7 @@ let print_expr (e: expr) : string =
     | Lam (v, e) -> sprintf "(fun v%d -> %s)" v (aux e)
     | Var v -> sprintf "v%d" v
     | Trace v -> sprintf "trace(%d)" v
+    | Panic x -> sprintf "panic(%s)" (aux x)
   in
   aux e
 
@@ -227,6 +229,7 @@ let print_icfp (e: expr) : string =
     | Lam (v, e) -> sprintf "L%s %s" (encode_int v) (aux e)
     | Var v -> sprintf "v%s" (encode_int v)
     | Trace v -> sprintf "v%s" (encode_int v) (* for compatibility *)
+    | Panic s -> failwith "can't write panic to icfp"
   in
   aux e
 
@@ -370,14 +373,6 @@ let eval (e: expr) : (eval_res, string) result =
             | Some e -> Lazy.force e
             | None -> err (sprintf "Unbound var: %d" v)
           end
-      | Trace v ->
-          begin match IM.find_opt v env with
-            | Some e ->
-                let res = Lazy.force e in
-                eprintf "var %d = %s\n" v (print_res res);
-                res
-            | None -> err (sprintf "Unbound var: %d" v)
-          end
       | App (a, b) ->
           begin match eval env a with
             | Lam (v, body, lam_env) ->
@@ -385,6 +380,16 @@ let eval (e: expr) : (eval_res, string) result =
                 eval body_env body
             | a -> err (sprintf "Lam got %s" (pp a))
           end
+      | Trace v ->
+          begin match IM.find_opt v env with
+            | Some e ->
+                let res = Lazy.force e in
+                eprintf "var %d = %s\n" v (pp res);
+                res
+            | None -> err (sprintf "Unbound var: %d" v)
+          end
+      | Panic x ->
+          err (sprintf "panic: %s" (pp (eval env x)))
   in
 
   try Ok (eval IM.empty e) with Err s -> Error s

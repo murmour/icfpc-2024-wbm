@@ -53,6 +53,8 @@ let compile_expr (env: env) (e: ML.expr) : (K.expr, string) result =
            Trace (env.map |> SM.find v)
          with Not_found ->
            err (sprintf "Invalid reference: %s" v))
+    | App [ Var "panic"; x ] ->
+        Panic (expr env x)
     | App (x :: xs) ->
         let e = ref (expr env x) in
         xs |> L.iter (fun x -> e := App (!e, expr env x));
