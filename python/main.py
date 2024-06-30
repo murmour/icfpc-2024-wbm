@@ -21,7 +21,7 @@ def download(request, path, n):
 
 
 def download_lambdaman():
-    download("get lambdaman%d", "../../data/lambdaman", 21)
+    download("get lambdaman%d", "../../data/in/lambdaman", 21)
 
 
 def download_spaceship():
@@ -66,13 +66,13 @@ def print_point_counts():
 
 
 def main():
-    #download_lambdaman()
+    download_lambdaman()
     #download_spaceship()
     #download_3d()
     #create_folders("spaceship", 25)
     #create_folders("lambdaman", 21)
     #submit_spaceship(13)
-    submit_spaceship(12, "naive.sol")
+    #submit_spaceship(12, "naive.sol")
     #submit_all()
     #print_point_counts()
 
