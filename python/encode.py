@@ -52,6 +52,14 @@ def encode_int(i: int) -> str:
 
 
 if __name__ == "__main__":
-    print(decode_str("""=/22%#4j}9/5}3/,6%$},!-"$!-!.Z}7)4(}!}3#/2%}/&}V]^_~"""))
-    print(encode_str("get lambdaman"))
-    print(encode_int(32))
+    sys.set_int_max_str_digits((1 << 31) - 1)
+    a_s = input()
+    # b_s = input()
+    a = decode_str(a_s)
+    # b = decode_int(b_s)
+    print(a)
+    # print(b)
+    # print(a+b)
+    # print(decode_str("""=/22%#4j}9/5}3/,6%$},!-"$!-!.Z}7)4(}!}3#/2%}/&}V]^_~"""))
+    # print(encode_str("get lambdaman21"))
+    # print(encode_int(32))
