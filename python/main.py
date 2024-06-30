@@ -3,7 +3,7 @@ import time
 
 
 def interact(request):
-    return subprocess.check_output(['../../data/ocaml_bins/interact', '-ss', request])
+    return subprocess.check_output(['../../data/ocaml_bins/interact', '-ss', 'stdin'], input=request.encode())
 
 
 def download(request, path, n):
