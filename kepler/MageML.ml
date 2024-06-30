@@ -113,61 +113,86 @@ let parse (s: string) : (Peg_MageML.program, string) result =
 (* CLI
    -------------------------------------------------------------------------- *)
 
+let parse_mage (s: string) : ML.program =
+  match parse s with
+    | Ok p -> p
+    | Error msg ->
+        Printf.eprintf "parse error: %s\n" msg;
+        exit 1
+
+let compile_mage (p: ML.program) : Kepler.expr =
+  match compile_program p with
+    | Ok e -> e
+    | Error msg ->
+        Printf.eprintf "compile error: %s\n" msg;
+        exit 1
+
+let parse_icfp (s: string) : Kepler.expr =
+  match K.parse_expr s with
+    | Ok r -> r
+    | Error msg ->
+        Printf.eprintf "parse error: %s\n" msg;
+        exit 1
+
+let eval_icfp (e: Kepler.expr) : Kepler.eval_res =
+  match K.eval e with
+    | Ok r -> r
+    | Error msg ->
+        Printf.eprintf "eval error: %s\n" msg;
+        exit 1
+
+
 let () =
   let mode = match Sys.argv.(1) with
-    | "-print_icfp" -> `Print_icfp
-    | "-print_kepler" -> `Print_kepler
-    | "-check_length" -> `Check_length
-    | "-eval" -> `Eval
+    | "-mage_eval" -> `Mage_eval
+    | "-mage_to_icfp" -> `Mage_to_icfp
+    | "-mage_to_hum" -> `Mage_to_hum
+    | "-mage_test_len" -> `Mage_test_len
+    | "-icfp_eval" -> `Icfp_eval
+    | "-icfp_to_hum" -> `Icfp_to_hum
     | etc ->
         failwith (sprintf "unknown mode: %s" etc)
   in
   let in_file = Sys.argv.(2) in
   let ch = open_in in_file in
   let s = really_input_string ch (in_channel_length ch) in
-  let ast =
-    match parse s with
-      | Ok p -> p
-      | Error msg ->
-          Printf.eprintf "parse error: %s\n" msg;
-          exit 1
-  in
-  let kepler_expr =
-    match compile_program ast with
-      | Ok e -> e
-      | Error msg ->
-          Printf.eprintf "compile error: %s\n" msg;
-          exit 1
-  in
+
   match mode with
-    | `Eval ->
-        let eval_res =
-          match K.eval kepler_expr with
-            | Ok r -> r
-            | Error msg ->
-                Printf.eprintf "eval error: %s\n" msg;
-                exit 1
-        in
+    | `Mage_eval ->
+        let mage_ast = parse_mage s in
+        let icfp_expr = compile_mage mage_ast in
+        let eval_res = eval_icfp icfp_expr in
         output_string stdout (K.print_res eval_res);
         exit 0
 
-    | `Print_kepler ->
-        output_string stdout (K.print_expr kepler_expr);
+    | `Mage_to_icfp ->
+        let mage_ast = parse_mage s in
+        let icfp_expr = compile_mage mage_ast in
+        output_string stdout (K.print_icfp icfp_expr);
         exit 0
 
-    | `Print_icfp ->
-        output_string stdout (K.print_icfp kepler_expr);
+    | `Mage_to_hum ->
+        let mage_ast = parse_mage s in
+        let icfp_expr = compile_mage mage_ast in
+        output_string stdout (K.print_expr icfp_expr);
         exit 0
 
-    | `Check_length ->
-        let eval_res =
-          match K.eval kepler_expr with
-            | Ok r -> r
-            | Error msg ->
-                Printf.eprintf "eval error: %s\n" msg;
-                exit 1
-        in
+    | `Mage_test_len ->
+        let mage_ast = parse_mage s in
+        let icfp_expr = compile_mage mage_ast in
+        let eval_res = eval_icfp icfp_expr in
         let s1 = K.print_res eval_res in
-        let s2 = K.print_icfp kepler_expr in
+        let s2 = K.print_icfp icfp_expr in
         Printf.printf "string len: %d, icfp len: %d" (S.length s1) (S.length s2);
+        exit 0
+
+    | `Icfp_eval ->
+        let icfp_expr = parse_icfp s in
+        let eval_res = eval_icfp icfp_expr in
+        output_string stdout (K.print_res eval_res);
+        exit 0
+
+    | `Icfp_to_hum ->
+        let icfp_expr = parse_icfp s in
+        output_string stdout (K.print_expr icfp_expr);
         exit 0
