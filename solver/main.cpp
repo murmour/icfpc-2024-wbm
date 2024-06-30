@@ -12,7 +12,7 @@
 #include <random>
 
 #include "common.h"
-#include "geom2d.h"
+//#include "geom2d.h"
 
 void __never(int a){printf("\nOPS %d", a);}
 #define ass(s) {if (!(s)) {__never(__LINE__);cout.flush();cerr.flush();abort();}}
@@ -67,14 +67,22 @@ void writeSolution(const Problem &p, const Solution &sol, string fname) {
 }
 
 struct IPoint {
-    int x, y;
+    int x = 0, y = 0;
 
     IPoint operator - (const IPoint &other) const {
         return {x - other.x, y - other.y};
     }
 
+    IPoint operator + (const IPoint &other) const {
+        return {x + other.x, y + other.y};
+    }
+
     LL sqd(const IPoint &other) const {
         return Sqr((LL)x - other.x) + Sqr((LL)y - other.y);
+    }
+
+    bool operator < (const IPoint &other) const {
+        return make_pair(x, y) < make_pair(other.x, other.y);
     }
 };
 
@@ -320,6 +328,93 @@ int user_temp = -1;
 int timeout = -1;
 int iter = 1000000;
 
+
+int dx[9] = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
+int dy[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
+const char *dc = "147258369";
+
+namespace naive {
+
+    map<IPoint, int> pmap;
+    vector<int> used;
+    int real_n;
+    string sol;
+
+    bool naive_rec(IPoint pos, IPoint vel, int cnt) {
+        if (cnt >= real_n)
+            return true;
+        for (int dir = 0; dir < 9; dir++) {
+            auto vel2 = vel;
+            vel2.x += dx[dir];
+            vel2.y += dy[dir];
+            auto pos2 = pos + vel2;
+            if (pmap.find(pos2) != pmap.end() && !used[pmap[pos2]]) {
+                int idx = pmap[pos2];
+                sol.push_back(dc[dir]);
+                used[idx] = 1;
+                if (naive_rec(pos2, vel2, cnt + 1)) return true;
+                used[idx] = 0;
+                sol.pop_back();
+            }
+        }
+        return false;
+    }
+
+    Solution solve_naive() {
+
+        IPoint pos, vel;
+        int n = (int)pts.size();
+        for (int i = 0; i < n; i++) {
+            if (pmap.find(pts[i]) == pmap.end())
+                pmap[pts[i]] = i;
+        }
+        used = vector<int>(n);
+        int cnt = 0;
+        real_n = (int)pmap.size();
+        fprintf(stderr, "real_n = %d/%d\n", real_n, n);
+        if (pmap.find(pos) != pmap.end()) {
+            cnt++;
+            used[pmap[pos]] = 1;
+        }
+        sol = "";
+        // while (cnt < real_n) {
+        //     int next_dir = -1;
+        //     int options = 0;
+        //     for (int dir = 0; dir < 9; dir++) {
+        //         auto vel2 = vel;
+        //         vel2.x += dx[dir];
+        //         vel2.y += dy[dir];
+        //         auto pos2 = pos + vel2;
+        //         if (pmap.find(pos2) != pmap.end() && !used[pmap[pos2]]) {
+        //             if (next_dir == -1)
+        //                 next_dir = dir;
+        //             options++;
+        //         }
+        //     }
+        //     if (next_dir == -1) {
+        //         fprintf(stderr, "Failed at %d/%d :(\n", cnt, n);
+        //         exit(112);
+        //     }
+        //     if (options > 1) {
+        //         fprintf(stderr, "%d options at %d/%d :(\n", options, cnt, n);
+        //         //exit(112);
+        //     }
+        //     vel.x += dx[next_dir];
+        //     vel.y += dy[next_dir];
+        //     sol.push_back(dc[next_dir]);
+        //     pos = pos + vel;
+        //     used[pmap[pos]] = 1;
+        //     cnt++;
+        // }
+        if (!naive_rec({0, 0}, {0, 0}, cnt)) {
+            fprintf(stderr, "Failed :(\n");
+            exit(112);
+        }
+        return sol;
+    }
+
+}
+
 Solution solve_sa() {
     int best_score = 0;
     vector<int> best_perm;
@@ -420,7 +515,8 @@ Solution solve_sa() {
     }
     int t = score_permutation(best_perm, &res);
     fprintf(stderr, "final score %d\n", t);
-    return format("solve spaceship%d ", problem_id) + res;
+    //return format("solve spaceship%d ", problem_id) + res;
+    return res;
 }
 
 void solve(const string &infile, const string &solver, const string &fname, ArgParser &args) {
@@ -437,8 +533,10 @@ void solve(const string &infile, const string &solver, const string &fname, ArgP
         init_dp();
         s = solve_sa();
     }
-    else
-    {
+    else if (solver == "naive") {
+        s = naive::solve_naive();
+    }
+    else {
         fprintf(stderr, "Invalid solver: %s\n", solver.c_str());
         exit(1);
     }
@@ -454,7 +552,7 @@ int main(int argc, char *argv[]) {
         in_file = p;
     } else {
         if (auto p = args.get_arg("-p"))
-            in_file = format("../../data/spaceship/%s.in", p);
+            in_file = format("../../data/in/spaceship/%s.in", p);
     }
 
     regex prob_id("/(\\d+)\\.in");
