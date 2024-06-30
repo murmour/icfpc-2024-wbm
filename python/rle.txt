@@ -1,0 +1,23 @@
+   11 11 = LLL
+   10 00 = UU
+   01 10 = D
+   01 01 = R
+----- --
+count  C
+
+count - количество повторений (bitlength = block_size - char_size)
+C - символ (bitlength = char_size)
+
+1         <= char_size  <= 8
+char_size <= block_size <= 64
+
+
+char_size = 2, block_size = 4:
+
+11 00   11 01   10 10   01 11 = UUURRRDDL
+-- --   -- --   -- --   -- --
+ 3  U    3  R    2  D    1  L
+
+11 00   01 00 = UUUU
+-- --   -- --
+ 3  U    1  U
