@@ -89,10 +89,10 @@ def decode_block(i: int, block_size: int = 4, char_size: int = 2) -> str:
 
     res = ""
     while i > 0:
-        c = i % char_p
-        i //= char_p
-        n = i % count_p
+        c = i % count_p
         i //= count_p
+        n = i % char_p
+        i //= char_p
         res += unmap_char(c) * n
 
     return res[::-1]
