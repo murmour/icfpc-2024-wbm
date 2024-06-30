@@ -122,5 +122,5 @@ def solve_lambdaman(n: int, send: bool = True):
 
 
 if __name__ == "__main__":
-    for l in range(1, 20):
+    for l in range(1, 21):
         solve_lambdaman(l)
