@@ -80,16 +80,16 @@ let send_string_to_string (request: string) : unit =
 
 let read_all ch : string =
   let buf_size = 4096 in
-  let buf = Buffer.create buf_size in
+  let buf = BF.create buf_size in
   let bytes = Bytes.create buf_size in
   let rec iter () =
     let len = input ch bytes 0 buf_size in
     if len > 0 then
-      (Buffer.add_subbytes buf bytes 0 len;
+      (BF.add_subbytes buf bytes 0 len;
        iter ())
   in
   iter ();
-  Buffer.contents buf
+  BF.contents buf
 
 
 let () =

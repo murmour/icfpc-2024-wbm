@@ -142,15 +142,15 @@ let () =
                 Printf.eprintf "eval error: %s\n" msg;
                 exit 1
         in
-        Printf.printf "%s" (K.print_res eval_res);
+        output_string stdout (K.print_res eval_res);
         exit 0
 
     | `Print_kepler ->
-        Printf.printf "%s" (K.print_expr kepler_expr);
+        output_string stdout (K.print_expr kepler_expr);
         exit 0
 
     | `Print_icfp ->
-        Printf.printf "%s" (K.print_icfp kepler_expr);
+        output_string stdout (K.print_icfp kepler_expr);
         exit 0
 
     | `Check_length ->
