@@ -167,6 +167,167 @@ void init_dp() {
     }
 }
 
+const char* cmd_map[3] = {"147", "258", "369"};
+
+namespace precise {
+
+    const int max_v = 25;
+    const int max_delta = 2000;
+    const int max_steps = 100;
+
+    const int D = 2 * max_delta + 1;
+    const int V = 2 * max_v + 1;
+
+    int dp[V][D][max_steps]; // 0 = inaccessible, 1..3 => -1..1
+    //int from[V][D][max_steps];
+
+    bool dp_init = false;
+
+    inline void mark(int v, int d, int step, int acc) {
+        if (v >= 0 && v < V && d >= 0 && d <= D) {
+            dp[v][d][step] = acc;
+        }
+    }
+
+    inline bool get_dp(int v, int d, int step) {
+        v += max_v;
+        d += max_delta;
+        if (v < 0 || v >= V || d < 0 || d >= D) return false;
+        return dp[v][d][step] != 0;
+    }
+
+    void init_dp_precise() {
+        if (dp_init) return;
+        dp_init = true;
+        memset(dp, 0, sizeof(dp));
+        dp[max_v][max_delta][0] = 2;
+
+        for (int i = 0; i + 1 < max_steps; i++) {
+            for (int v = 0; v < V; v++)
+                for (int d = 0; d < D; d++)
+                    if (dp[v][d][i]) {
+                        int vr = v - max_v;
+                        mark(v-1, d+vr-1, i+1, 1);
+                        mark(v, d+vr, i+1, 2);
+                        mark(v+1, d+vr+1, i+1, 3);
+                    }
+        }
+    }
+
+    vector<int> get_commands_1d(int v0, int delta0, int steps) {
+        int v = v0 + max_v;
+        int delta = delta0 + max_delta;
+        vector<int> res;
+        for (int i = steps; i > 0; i--) {
+            int acc = dp[v][delta][i] - 2;
+            res.push_back(acc);
+            delta -= (v - max_v);
+            v -= acc;
+        }
+        ass(delta == max_delta);
+        ass(v == max_v);
+        reverse(res.begin(), res.end());
+        return res;
+    }
+
+    int get_moves(IPoint delta, IPoint v1, IPoint v2, Solution *sol = nullptr) {
+        if (delta.x == 0 && delta.y == 0) return 0;
+        for (int step = 1; step < max_steps; step++) {
+            if (get_dp(v2.x - v1.x, delta.x - v1.x * step, step) &&
+                get_dp(v2.y - v1.y, delta.y - v1.y * step, step)) {
+                    if (sol) {
+                        auto cx = get_commands_1d(v2.x - v1.x, delta.x - v1.x * step, step);
+                        auto cy = get_commands_1d(v2.y - v1.y, delta.y - v1.y * step, step);
+                        for (int j = 0; j < step; j++)
+                            sol->push_back(cmd_map[cx[j]+1][cy[j]+1]);
+                    }
+                    return step;
+                }
+        }
+        return inf;
+    }
+
+    const int wnd = 10;
+    const int W = wnd * 2 + 1;
+    int thr = 3;
+    const int MAX_PTS = 66000;
+
+    int dpp[MAX_PTS][W][W];
+    IPoint from[MAX_PTS][W][W];
+
+    int score_permutation(const Permutation &p, Solution *sol = nullptr) {
+        init_dp_precise();
+        int n = (int)p.size();
+        for (int i = 0; i < n; i++)
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < W; y++)
+                    dpp[i][x][y] = inf;
+
+        IPoint offset = {wnd, wnd};
+        for (int x = 0; x < W; x++)
+            for (int y = 0; y < W; y++)
+            {
+                dpp[0][x][y] = get_moves(pts[p[0]], {}, {x - wnd, y - wnd});
+                from[0][x][y] = offset;
+            }
+
+        for (int i = 0; i + 1 < n; i++) {
+            int best = inf;
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < W; y++) {
+                    best = min(best, dpp[i][x][y]);
+                }
+            auto delta = pts[p[i+1]] - pts[p[i]];
+            ass(best < inf);
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < W; y++) {
+                    int base = dpp[i][x][y];
+                    if (base <= best + thr) {
+                        for (int x1 = 0; x1 < W; x1++)
+                            for (int y1 = 0; y1 < W; y1++) {
+                                int &tgt = dpp[i+1][x1][y1];
+                                int t = base + get_moves(delta, {x - wnd, y - wnd}, {x1 - wnd, y1 - wnd});
+                                if (t < tgt) {
+                                    tgt = t;
+                                    from[i+1][x1][y1] = {x, y};
+                                }
+                            }
+                    }
+                }
+        }
+        int best = inf;
+        IPoint best_v;
+        for (int x = 0; x < W; x++)
+            for (int y = 0; y < W; y++) {
+                int t = dpp[n-1][x][y];
+                if (t < best) {
+                    best = t;
+                    best_v = {x, y};
+                }
+            }
+        ass(best < inf);
+        if (sol) {
+            vector<string> parts;
+            for (int i = n - 1; i >= 0; i--) {
+                auto delta = i > 0 ? pts[p[i]] - pts[p[i-1]] : pts[p[i]];
+                string part;
+                auto v0 = from[i][best_v.x][best_v.y];
+                int t = get_moves(delta, v0 - offset, best_v - offset, &part);
+                //fprintf(stderr, "part: %s", part.c_str());
+                ass(t < inf);
+                parts.push_back(part);
+                best_v = v0;
+            }
+            ass(best_v.x == wnd && best_v.y == wnd);
+            reverse(parts.begin(), parts.end());
+            *sol = StringJoin(parts, "");
+        }
+        return best;
+    }
+
+}
+
+
 vector<int> get_commands_1d(int v0, int steps, int v1, int delta0) {
     vector<int> res;
     int delta = max_delta + delta0;
@@ -189,8 +350,6 @@ vector<int> get_commands_1d(int v0, int steps, int v1, int delta0) {
     reverse(res.begin(), res.end());
     return res;
 }
-
-const char* cmd_map[3] = {"147", "258", "369"};
 
 inline bool can_overacc(int dist_left, int vel) {
     dist_left -= vel + 1;
@@ -283,15 +442,19 @@ static vector<vector<int>> nearest;
 
 void init_nearest()
 {
+    vector<pair<LL, int>> t;
     if (nearest.empty()) {
         int n = pts.size();
         nearest.resize(n);
         for (int i = 0; i < n; i++) {
-            vector<pair<LL, int>> t;
+            t.clear();
             for (int j = 0; j < n; j++) if (j != i)
                 t.push_back({pts[i].sqd(pts[j]), j});
             sort(t.begin(), t.end());
-            for (auto x : t) nearest[i].push_back(x.second);
+            for (auto x : t) {
+                nearest[i].push_back(x.second);
+                if (nearest.size() >= 10) break;
+            }
         }
     }
 }
@@ -430,35 +593,6 @@ namespace naive {
             used[pmap[pos]] = 1;
         }
         sol = "";
-        // while (cnt < real_n) {
-        //     int next_dir = -1;
-        //     int options = 0;
-        //     for (int dir = 0; dir < 9; dir++) {
-        //         auto vel2 = vel;
-        //         vel2.x += dx[dir];
-        //         vel2.y += dy[dir];
-        //         auto pos2 = pos + vel2;
-        //         if (pmap.find(pos2) != pmap.end() && !used[pmap[pos2]]) {
-        //             if (next_dir == -1)
-        //                 next_dir = dir;
-        //             options++;
-        //         }
-        //     }
-        //     if (next_dir == -1) {
-        //         fprintf(stderr, "Failed at %d/%d :(\n", cnt, n);
-        //         exit(112);
-        //     }
-        //     if (options > 1) {
-        //         fprintf(stderr, "%d options at %d/%d :(\n", options, cnt, n);
-        //         //exit(112);
-        //     }
-        //     vel.x += dx[next_dir];
-        //     vel.y += dy[next_dir];
-        //     sol.push_back(dc[next_dir]);
-        //     pos = pos + vel;
-        //     used[pmap[pos]] = 1;
-        //     cnt++;
-        // }
         if (!naive_rec({0, 0}, {0, 0}, cnt)) {
             fprintf(stderr, "Failed (%d) :(\n", max_cnt);
             exit(112);
@@ -469,6 +603,8 @@ namespace naive {
 }
 
 bool IDENTITY = false;
+bool MST0 = false;
+bool PRECISE = false;
 
 Solution solve_big() {
     init_dp();
@@ -503,7 +639,141 @@ Solution solve_big() {
     Solution res;
     int t = score_permutation(a, &res);
     fprintf(stderr, "final score %d\n", t);
-    if (t > 1000000) {
+    if (t > 1048576) {
+        fprintf(stderr, "solution is too long!\n");
+        exit(111);
+    }
+    return res;
+}
+
+const LL INF = (LL)inf * inf;
+
+Permutation get_mst_perm() {
+    int n = (int)pts.size();
+    vector<int> used (n);
+    vector<int> sel_e (n, -1);
+    vector<LL> min_e(n, INF);
+    vector<vector<pair<int, int>>> edges(n); // euler graph (v, edge_id)
+    int edge_id = 0;
+
+    auto add_edge = [&](int u, int v) {
+        edges[u].push_back({v, edge_id});
+        edges[v].push_back({u, edge_id});
+        edge_id++;
+    };
+
+    min_e[0] = 0;
+    for (int i=0; i<n; ++i) {
+        int v = -1;
+        for (int j=0; j<n; ++j)
+            if (!used[j] && (v == -1 || min_e[j] < min_e[v]))
+                v = j;
+        if (min_e[v] == inf) {
+            ass(false);
+        }
+
+        used[v] = true;
+        if (sel_e[v] != -1) {
+            add_edge(v, sel_e[v]);
+            //edges[v].push_back({sel_e[v], edge_id});
+            //edges[sel_e[v]].push_back({v, edge_id});
+            //edge_id++;
+        }
+
+        for (int to=0; to<n; ++to) {
+            LL dist = pts[v].sqd(pts[to]);
+            if (dist < min_e[to]) {
+                min_e[to] = dist;
+                sel_e[to] = v;
+            }
+        }
+    }
+
+    int bad_cnt = 0;
+    for (int i = 0; i < n; i++) if (edges[i].size() % 2 != 0) bad_cnt++;
+    fprintf(stderr, "%d bad vertices\n", bad_cnt);
+
+    for (int i = 0; i < n; i++) if (edges[i].size() % 2 != 0) {
+        LL min_d = INF;
+        int v = -1;
+        for (int j = 0; j < n; j++) if (i != j && edges[j].size() % 2 != 0) {
+            LL d = pts[i].sqd(pts[j]);
+            if (d < min_d) {
+                min_d = d;
+                v = j;
+            }
+        }
+        ass(v != -1);
+        add_edge(i, v);
+    }
+
+    int start_idx = -1;
+    LL min_d = (LL)inf * inf;
+    IPoint c = {0, 0};
+    for (int i = 0; i < n; i++) {
+        LL d = c.sqd(pts[i]);
+        if (d < min_d) {
+            min_d = d;
+            start_idx = i;
+        }
+    }
+
+	stack<int> st;
+	st.push(start_idx);
+	vector<int> res;
+    vector<int> del(edge_id);
+    set<int> seen;
+	while (!st.empty())
+	{
+		int v = st.top();
+		int other = -1;
+        while (!edges[v].empty()) {
+            auto e = edges[v].back();
+            edges[v].pop_back();
+            if (del[e.second]) continue;
+            other = e.first;
+            del[e.second] = 1;
+            break;
+        }
+		if (other == -1)
+		{
+            if (seen.find(v) == seen.end()) {
+                seen.insert(v);
+			    res.push_back(v);
+            }
+			st.pop();
+		}
+		else
+		{
+			st.push(other);
+		}
+	}
+    ass((int)res.size() == n);
+    return res;
+}
+
+Solution solve_mst() {
+    init_dp();
+    auto a = get_mst_perm();
+    Solution res;
+    int t = score_permutation(a, &res);
+    fprintf(stderr, "final score %d\n", t);
+    if (t > 1048576) {
+        fprintf(stderr, "solution is too long!\n");
+        exit(111);
+    }
+    return res;
+}
+
+Solution solve_precise() {
+    vector<int> a;
+    int n = (int)pts.size();
+    for (int i = 0; i < n; i++)
+        a.push_back(i);
+    Solution res;
+    int t = precise::score_permutation(a, &res);
+    fprintf(stderr, "final score %d\n", t);
+    if (t > 1048576) {
         fprintf(stderr, "solution is too long!\n");
         exit(111);
     }
@@ -511,11 +781,15 @@ Solution solve_big() {
 }
 
 Solution solve_sa() {
+    auto score_perm_f = PRECISE ? precise::score_permutation : score_permutation;
+    auto score_perm_fast = score_permutation;
     int best_score = 0;
     vector<int> best_perm;
     vector<int> a;
     int n = (int)pts.size();
-    if (problem_id == 11 || IDENTITY) {
+    if (MST0) {
+        a = get_mst_perm();
+    } else if (problem_id == 11 || IDENTITY) {
         for (int i = 0; i < n; i++)
             a.push_back(i);
     } else if (n < 500) {
@@ -523,7 +797,6 @@ Solution solve_sa() {
             a.push_back(i);
         shuffle(a.begin(), a.end(), RGEN);
     } else {
-        init_nearest();
         vector<int> used(n);
         int start_idx = -1;
         LL min_d = (LL)inf * inf;
@@ -540,23 +813,28 @@ Solution solve_sa() {
             a.push_back(cur);
             used[cur] = 1;
             int next = -1;
-            for (int t : nearest[cur]) if (!used[t]) {
-                next = t;
-                break;
+            LL min_d = (LL)inf * inf;
+            for (int j = 0; j < n; j++) if (!used[j]) {
+                LL d = pts[cur].sqd(pts[j]);
+                if (d < min_d) {
+                    min_d = d;
+                    next = j;
+                }
             }
             cur = next;
         }
     }
 
     fprintf(stderr, "Starting hill climbing\n");
-    auto cur_score = score_permutation(a);
+    auto cur_score = score_perm_fast(a, nullptr);
     // phase 1: hill climbing
     int hill_iter = 100000 * 100 / n;
+    //if (PRECISE) hill_iter /= 100;
     for (int it = 0; it < hill_iter; it++) {
         auto ne = get_neighbor(a);
-        auto t = score_permutation(ne);
+        auto t = score_perm_fast(ne, nullptr);
         if (t < cur_score) {
-            fprintf(stderr, "score = %d\n", t);
+            fprintf(stderr, "iter = %d, score = %d\n", it, t);
             cur_score = t;
             a = ne;
         }
@@ -576,7 +854,8 @@ Solution solve_sa() {
             //temp = (int)(temp0 * (1.0 - (double)it / iter));
             temp = temp0 * pow(1.0 / temp0, (double)it / iter);
         } else {
-            if (it % 10000 == 0) {
+            int check_period = PRECISE ? 1000 : 10000;
+            if (it % check_period == 0) {
                 // check timer
                 auto t1 = std::chrono::system_clock::now();
                 auto diff = (t1 - t0).count();
@@ -588,7 +867,7 @@ Solution solve_sa() {
         }
         it++;
         auto ne = get_neighbor(a);
-        auto t = score_permutation(ne);
+        auto t = score_perm_f(ne, nullptr);
         int delta = cur_score - t;
         //if (delta > 0 || temp * RndF() > -delta) {
         if (delta >= 0 || RndF() < exp(delta / temp)) {
@@ -604,11 +883,11 @@ Solution solve_sa() {
         }
     }
     Solution res;
-    if (best_score > 1000000) {
+    if (best_score > 1048576) {
         fprintf(stderr, "solution is too long!\n");
         exit(111);
     }
-    int t = score_permutation(best_perm, &res);
+    int t = score_perm_f(best_perm, &res);
     fprintf(stderr, "final score %d\n", t);
     //return format("solve spaceship%d ", problem_id) + res;
     return res;
@@ -631,11 +910,22 @@ void solve(const string &infile, const string &solver, const string &fname, ArgP
         init_dp();
         s = solve_sa();
     }
+    else if (solver == "sap") {
+        init_dp();
+        PRECISE = true;
+        s = solve_sa();
+    }
     else if (solver == "naive") {
         s = naive::solve_naive();
     }
     else if (solver == "big") {
         s = solve_big();
+    }
+    else if (solver == "precise") {
+        s = solve_precise();
+    }
+    else if (solver == "mst") {
+        s = solve_mst();
     }
     else if (solver == "naive_x2") {
         naive::M2 = true;
@@ -684,6 +974,10 @@ int main(int argc, char *argv[]) {
         sscanf(st, "%d", &user_temp);
     }
 
+    if (auto st = args.get_arg("-thr")) {
+        sscanf(st, "%d", &precise::thr);
+    }
+
     string fname = "";
     if (auto s = args.get_arg("-out")) {
         fname = s;
@@ -697,6 +991,10 @@ int main(int argc, char *argv[]) {
     if (args.has_option("--identity")) {
         fprintf(stdout, "enabled IDENTITY\n");
         IDENTITY = true;
+    }
+    if (args.has_option("--mst0")) {
+        fprintf(stdout, "enabled MST0\n");
+        MST0 = true;
     }
 
     solve(in_file, solver, fname, args);
