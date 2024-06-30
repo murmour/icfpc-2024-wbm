@@ -187,8 +187,8 @@ let print_expr (e: expr) : string =
     | Take (a, b) -> sprintf "take %s %s" (aux a) (aux b)
     | Drop (a, b) -> sprintf "drop %s %s" (aux a) (aux b)
     | If (cond, thn, els) ->
-        sprintf "if %s %s %s" (aux cond) (aux thn) (aux els)
-    | App (a, b) -> sprintf "%s(%s)" (aux a) (aux b)
+        sprintf "if %s then %s else %s" (aux cond) (aux thn) (aux els)
+    | App (a, b) -> sprintf "(%s(%s))" (aux a) (aux b)
     | Lam (v, e) -> sprintf "(fun v%d -> %s)" v (aux e)
     | Var v -> sprintf "v%d" v
   in
@@ -280,6 +280,7 @@ let eval (e: expr) : (eval_res, string) result =
           end
       | ItoS e ->
           begin match eval env e with
+            | I i when i < 0 -> err (sprintf "ItoS got %d" i)
             | I i -> S (decode_string (encode_int i))
             | r -> err (sprintf "ItoS got %s" (pp r))
           end
@@ -335,7 +336,7 @@ let eval (e: expr) : (eval_res, string) result =
           (* todo: short-curcuit (in which direction?) *)
           begin match (eval env a, eval env b) with
             | (B a, B b) -> B (a && b)
-            | (a, b) -> err (sprintf "Or got %s, %s" (pp a) (pp b))
+            | (a, b) -> err (sprintf "And got %s, %s" (pp a) (pp b))
           end
       | Conc (a, b) ->
           begin match (eval env a, eval env b) with
