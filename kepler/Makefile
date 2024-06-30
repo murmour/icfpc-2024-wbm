@@ -1,7 +1,4 @@
 
-kepler: kepler.mli kepler.ml
-	ocamlopt $^ -o $@
-
 interact: kepler.mli kepler.ml interact.ml
 	ocamlfind opt -linkpkg -package 'curl' $^ -o $@
 
