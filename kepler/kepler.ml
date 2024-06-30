@@ -334,16 +334,26 @@ let eval (e: expr) : (eval_res, string) result =
             | (a, b) -> err (sprintf "Eq got %s, %s" (pp a) (pp b))
           end
       | Or (a, b) ->
-          (* todo: short-curcuit (in which direction?) *)
-          begin match (eval env a, eval env b) with
-            | (B a, B b) -> B (a || b)
-            | (a, b) -> err (sprintf "Or got %s, %s" (pp a) (pp b))
+          begin match eval env a  with
+            | B true ->
+                B true
+            | (B false) as a ->
+                begin match eval env b with
+                  | B b -> B b
+                  | b -> err (sprintf "Or got %s, %s" (pp a) (pp b))
+                end
+            | a -> err (sprintf "Or got %s, ?" (pp a))
           end
       | And (a, b) ->
-          (* todo: short-curcuit (in which direction?) *)
-          begin match (eval env a, eval env b) with
-            | (B a, B b) -> B (a && b)
-            | (a, b) -> err (sprintf "And got %s, %s" (pp a) (pp b))
+          begin match eval env a  with
+            | B false ->
+                B false
+            | (B true) as a ->
+                begin match eval env b with
+                  | B b -> B b
+                  | b -> err (sprintf "And got %s, %s" (pp a) (pp b))
+                end
+            | a -> err (sprintf "And got %s, ?" (pp a))
           end
       | Conc (a, b) ->
           begin match (eval env a, eval env b) with
