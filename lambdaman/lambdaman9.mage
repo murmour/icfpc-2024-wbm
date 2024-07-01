@@ -1,5 +1,5 @@
-(* score: 116 (best: 109) *)
+(* score: 110 (best: 109) *)
 
 let dup s = s ^ s ^ s in
-let qup s = dup (dup (dup s)) in
-"solve lambdaman9 " ^ qup (qup "RR" ^ "D" ^ qup "LL" ^ "D")
+let qup s = dup (dup (dup s)) ^ "D" in
+"solve lambdaman9 " ^ qup (qup "RR" ^ qup "LL")
