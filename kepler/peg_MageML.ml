@@ -33,10 +33,6 @@ type expr =
   | Let of var * typed_arg list * type_ * expr * expr
   | Var of var
 
-type decl = var * typed_arg list * type_ * expr
-
-type program = decl list
-
 
 module S = CharStream
 type 'a parse_result = S of 'a * int | F
@@ -47,66 +43,15 @@ let mark _c _i tag =
   else if _i > _c.maxidx then
     (_c.maxidx <- _i; _c.tags <- [ tag ])
   else ()
-let rec gDE _c _i =
+let rec gC2 _c _i =
   match ws _c _i with F -> F | S (_, _i) ->
-  gDD _c _i
-and gDD _c _i =
-  match gDC _c _i with F -> F | S (r1, _i) ->
-  match gDB _c _i with F -> F | S (_, _i) ->
-  S (r1, _i)
-and gDC _c _i =
-  let rec iter _i =
-    match decl _c _i with | F -> ([], _i) | S (r, _i) ->
-    let (l, _i) = iter _i in (r :: l, _i)
-  in
-  let (l, _i) = iter _i in
-  S (l, _i)
-and gDB _c _i =
-  if _i >= S.length _c.s then S ((), _i) else (mark _c _i "eof"; F)
-and gDA _c _i =
-  match gC' _c _i with F -> (mark _c _i "decl"; F) | s -> s
-and gC' _c _i =
-  match gC_ _c _i with F -> F | S (r1, _i) ->
-  match gC1 _c _i with F -> F | S (_, _i) ->
-  S (r1, _i)
-and gC_ _c _i =
-  match gC5 _c _i with F -> F | S (r0, _i) ->
-  match gC6 _c _i with F -> F | S (r1, _i) ->
-  match res_type _c _i with F -> F | S (r2, _i) ->
-  match gC9 _c _i with F -> F | S (r3, _i) ->
-  S ((r0, r1, r2, r3), _i)
-and gC9 _c _i =
-  match gC8 _c _i with F -> F | S (_, _i) ->
-  expr _c _i
-and gC8 _c _i =
-  match gC7 _c _i with F -> F | S (r1, _i) ->
-  match ws _c _i with F -> F | S (_, _i) ->
-  S (r1, _i)
-and gC7 _c _i =
-  if S.match_char '=' _c.s _i then S ((), _i+1) else F
-and gC6 _c _i =
-  let rec iter _i =
-    match typed_arg _c _i with | F -> ([], _i) | S (r, _i) ->
-    let (l, _i) = iter _i in (r :: l, _i)
-  in
-  let (l, _i) = iter _i in
-  S (l, _i)
-and gC5 _c _i =
-  match gC4 _c _i with F -> F | S (_, _i) ->
-  id _c _i
-and gC4 _c _i =
-  if not (S.match_string "let" _c.s _i) then F else let _i = _i+3 in
-  gC3 _c _i
-and gC3 _c _i =
-  if gC2 _c _i <> F then F else ws _c _i
-and gC2 _c _i =
-  match S.read_char _c.s _i with Some c when (c >= 'a' && c <= 'z') || ((c >= 'A' && c <= 'Z') || ((c >= '0' && c <= '9') || (c = '_'))) -> S ((), _i+1) | _ -> F
+  gC1 _c _i
 and gC1 _c _i =
-  match gC0 _c _i with F -> F | S (r1, _i) ->
-  match ws _c _i with F -> F | S (_, _i) ->
+  match expr _c _i with F -> F | S (r1, _i) ->
+  match gC0 _c _i with F -> F | S (_, _i) ->
   S (r1, _i)
 and gC0 _c _i =
-  if S.match_char ';' _c.s _i then S ((), _i+1) else F
+  if _i >= S.length _c.s then S ((), _i) else (mark _c _i "eof"; F)
 and gCz _c _i =
   match expr1 _c _i with F -> F | S (lhs, _i) -> (match (match S (lhs, _i) with F -> F | S (r0, _i) ->
   match (match (match (if S.match_string "&&" _c.s _i then S ((), _i+2) else F) with F -> F | S (r1, _i) ->
@@ -706,10 +651,8 @@ and expr0 _c _i =
   gCz _c _i
 and expr _c _i =
   expr0 _c _i
-and decl _c _i =
-  gDA _c _i
 and program _c _i =
-  gDE _c _i
+  gC2 _c _i
 module SSet = Set.Make(String)
 let unique l = SSet.elements (SSet.of_list l)
 let program _s _i =
