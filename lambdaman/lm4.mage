@@ -1,0 +1,5 @@
+(* score: 334 (best: 111) *)
+
+let dup x = x ^ x ^ x in
+let qup x = dup (dup (dup (dup (dup x)))) in
+"solve lambdaman4 " ^ qup (qup "DL" ^ qup "UR" ^ qup "DR" ^ qup "UL" ^ qup "LD" ^ qup "RU" ^ qup "RD" ^ qup "LU")

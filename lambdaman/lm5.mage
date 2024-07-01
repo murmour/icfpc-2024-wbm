@@ -1,0 +1,10 @@
+(* score: 159 (best: 105) *)
+
+let dup s = s ^ s ^ s in
+let qup s = dup (dup (dup (s))) in
+"solve lambdaman5 RDLL"
+^ qup "LURR"
+^ qup "LLRRLD"
+^ qup "URRLLR"
+^ qup "LLLRRRDL"
+^ qup "RRRRLLLU"
