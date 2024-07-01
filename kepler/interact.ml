@@ -89,7 +89,7 @@ let read_all ch : string =
        iter ())
   in
   iter ();
-  BF.contents buf
+  S.trim (BF.contents buf)
 
 
 let () =
