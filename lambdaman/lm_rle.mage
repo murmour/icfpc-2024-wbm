@@ -6,13 +6,13 @@ let make_rec a =
 in
 let decode = make_rec(fun decode (b: int) : string ->
   let copy = make_rec(fun copy (s: string) (n: int) : string ->
-    if n = 1 then s else (copy s (n-1)) ^ s
-  ) in
+    if n = 1 then s else (copy s (n-1)) ^ s)
+  in
   if b > 0 then
     let dir = take 1 (drop (b % 4) "URDL") in
     let len = (b/4) % 4 in
     decode (b/16) ^ copy dir len
   else
-    ""
-) in
+    "")
+in
 "solve lambdaman11 " ^ decode encoded
