@@ -15,7 +15,7 @@ let sprintf = Printf.sprintf
 
 type env = { map: K.var SM.t; ct: int }
 
-let compile_expr (env: env) (e: ML.expr) : (K.expr, string) result =
+let compile (e: ML.expr) : (K.expr, string) result =
   let exception Err of string in
   let err s = raise (Err s) in
 
@@ -80,33 +80,9 @@ let compile_expr (env: env) (e: ML.expr) : (K.expr, string) result =
         with Not_found ->
           err (sprintf "Invalid reference: %s" v)
   in
+  let env = { map = SM.empty; ct = 0 } in
   try
     Ok (expr env e)
-  with Err s ->
-    Error s
-
-
-let compile_program (p: ML.program) : (K.expr, string) result =
-  let exception Err of string in
-  let err s = raise (Err s) in
-
-  let env = { map = SM.empty; ct = 0 } in
-  let rec desugar: ML.decl list -> ML.expr = function
-    | (v, [], res_type, body) :: xs ->
-        App [Fun ([(v, res_type)], TAny, desugar xs); body]
-    | (v, args, res_type, body) :: xs ->
-        let rhs = ML.Fun (args, res_type, body) in
-        App [Fun ([(v, TAny)], TAny, desugar xs); rhs]
-    | [] ->
-        try
-          Var "magic"
-        with Not_found ->
-          err "Magic not found!"
-  in
-
-  try
-    let e = desugar p in
-    compile_expr env e
   with Err s ->
     Error s
 
@@ -114,7 +90,7 @@ let compile_program (p: ML.program) : (K.expr, string) result =
 (* Parsing
    -------------------------------------------------------------------------- *)
 
-let parse (s: string) : (Peg_MageML.program, string) result =
+let parse (s: string) : (Peg_MageML.expr, string) result =
   let s = CharStream.from_string s in
   match Peg_MageML.program s 0 with
     | Ok (p, _) ->
@@ -128,28 +104,28 @@ let parse (s: string) : (Peg_MageML.program, string) result =
 (* CLI
    -------------------------------------------------------------------------- *)
 
-let parse_mage (s: string) : ML.program =
+let parse_mage (s: string) : ML.expr =
   match parse s with
     | Ok p -> p
     | Error msg ->
         Printf.eprintf "parse error: %s\n" msg;
         exit 1
 
-let compile_mage (p: ML.program) : Kepler.expr =
-  match compile_program p with
-    | Ok e -> e
+let compile_mage (e: ML.expr) : K.expr =
+  match compile e with
+    | Ok e' -> e'
     | Error msg ->
         Printf.eprintf "compile error: %s\n" msg;
         exit 1
 
-let parse_icfp (s: string) : Kepler.expr =
+let parse_icfp (s: string) : K.expr =
   match K.parse_expr s with
     | Ok r -> r
     | Error msg ->
         Printf.eprintf "parse error: %s\n" msg;
         exit 1
 
-let eval_icfp (e: Kepler.expr) : Kepler.eval_res =
+let eval_icfp (e: K.expr) : K.eval_res =
   match K.eval e with
     | Ok r -> r
     | Error msg ->

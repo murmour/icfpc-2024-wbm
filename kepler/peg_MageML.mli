@@ -32,12 +32,8 @@ type expr =
   | Let of var * typed_arg list * type_ * expr * expr
   | Var of var
 
-type decl = var * typed_arg list * type_ * expr
-
-type program = decl list
-
 
 val program:
   CharStream.t ->
   CharStream.index ->
-  (program * int, string list * int) result
+  (expr * int, string list * int) result

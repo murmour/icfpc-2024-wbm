@@ -96,8 +96,5 @@ inline rule expr0 =
 
 inline rule expr = expr0
 
-rule decl =
-  (key{"let"} id, typed_arg*, res_type, tok{"="} expr) < tok{";"}
-
 inline rule program =
-  ws decl* < eof
+  ws expr < eof
