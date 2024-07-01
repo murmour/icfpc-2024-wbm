@@ -173,7 +173,7 @@ const char* cmd_map[3] = {"147", "258", "369"};
 namespace precise {
 
     const int max_v = 25;
-    const int max_delta = 1000;
+    const int max_delta = 500;
     const int max_steps = 60;
 
     const int D = 2 * max_delta + 1;
@@ -189,13 +189,6 @@ namespace precise {
             dpx[v0][v][d] = dpx[v0][v][d] | mask;
         }
     }
-
-    // inline bool get_dp(int v0, int v, int d, int step) {
-    //     v += max_v;
-    //     d += max_delta;
-    //     if (v < 0 || v >= V || d < 0 || d >= D) return false;
-    //     return dp[v][d][step] != 0;
-    // }
 
     void init_dp_precise() {
         if (dp_init) return;
@@ -271,10 +264,10 @@ namespace precise {
         return res;
     }
 
-    const int wnd = 15;
+    const int wnd = 25;
     const int W = wnd * 2 + 1;
     int thr = 3;
-    const int MAX_PTS = 66000;
+    const int MAX_PTS = 9000;
 
     int dpp[MAX_PTS][W][W];
     IPoint from[MAX_PTS][W][W];
@@ -310,7 +303,7 @@ namespace precise {
                 }
             auto delta_adj = pts[p[i+1]] - pts[p[i]] + delta_offset;
             if (!is_valid_delta(delta_adj)) return inf;
-            //if (best < inf) return inf;
+            if (best == inf) return inf;
             ass(best < inf);
             for (int x = 0; x < W; x++)
                 for (int y = 0; y < W; y++) {
@@ -338,6 +331,7 @@ namespace precise {
                     best_v = {x, y};
                 }
             }
+        if (best == inf) return inf;
         ass(best < inf);
         if (sol) {
             vector<string> parts;
@@ -922,6 +916,13 @@ Solution solve_sa() {
     }
     int t = score_perm_f(best_perm, &res);
     fprintf(stderr, "final score %d\n", t);
+    if (!PRECISE) {
+        string res2;
+        int t2 = precise::score_permutation(best_perm, &res2);
+        fprintf(stderr, "precise score %d\n", t2);
+        if (t2 < t)
+            return res2;
+    }
     //return format("solve spaceship%d ", problem_id) + res;
     return res;
 }
