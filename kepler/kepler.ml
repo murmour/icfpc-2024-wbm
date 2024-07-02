@@ -234,6 +234,106 @@ let print_icfp (e: expr) : string =
   aux e
 
 
+(* Optimizing
+   -------------------------------------------------------------------------- *)
+
+let map_expr (f: expr -> expr) (e: expr) : expr =
+  match e with
+    | Var _ | B _ | I _ | S _ -> e
+    | Neg e -> Neg (f e)
+    | Not e -> Not (f e)
+    | StoI e -> StoI (f e)
+    | ItoS e -> ItoS (f e)
+    | Add (a, b) -> Add (f a, f b)
+    | Sub (a, b) -> Sub (f a, f b)
+    | Mul (a, b) -> Mul (f a, f b)
+    | Div (a, b) -> Div (f a, f b)
+    | Mod (a, b) -> Mod (f a, f b)
+    | Lt (a, b) -> Gt (f a, f b)
+    | Gt (a, b) -> Gt (f a, f b)
+    | Eq (a, b) -> Eq (f a, f b)
+    | Or (a, b) -> Or (f a, f b)
+    | And (a, b) -> And (f a, f b)
+    | Conc (a, b) -> Conc (f a, f b)
+    | Take (a, b) -> Take (f a, f b)
+    | Drop (a, b) -> Drop (f a, f b)
+    | If (c, t, e) -> If (f c, f t, f e)
+    | Lam (v, e) -> Lam (v, f e)
+    | App (a, b) -> App (f a, f b)
+    | (Trace _) as e -> e
+    | Panic e -> Panic (f e)
+
+
+(* is it a single op that encodes into 1-2 characters? *)
+let is_tiny: expr -> bool = function
+  | B _ -> true
+  | Var i | I i when i < 94 -> true
+  | S s when S.length s < 2 -> true
+  | _ -> false
+
+
+let unlambda (e: expr) : (expr, string) result =
+  let exception Err of string in
+  let err s = raise (Err s) in
+
+  let ct = ref 0 in
+  let use_counts = ref IM.empty in
+
+  let rec build_ssa (env: var IM.t) : expr -> expr = function
+    | Lam (v, body) ->
+        let v' = !ct in
+        incr ct;
+        let env = env |> IM.add v v' in
+        use_counts := IM.add v' 0 !use_counts;
+        Lam (v', build_ssa env body)
+    | Var v ->
+        begin match IM.find_opt v env with
+          | None ->
+              err (sprintf "Unbound var: %d" v)
+          | Some v' ->
+              let ct = IM.find v' !use_counts in
+              use_counts := IM.add v' (ct+1) !use_counts;
+              Var v'
+        end
+    | e ->
+        map_expr (build_ssa env) e
+  in
+
+  let rec cut_lams (env: expr IM.t) : expr -> expr = function
+    | (Var v) as e ->
+        (try IM.find v env with Not_found -> e)
+    | App (Lam (v, body), e) ->
+        let e' = cut_lams env e in
+        begin match IM.find v !use_counts with
+          | 0 ->
+              cut_lams env body
+          | 1 ->
+              cut_lams (IM.add v e' env) body
+          | n when is_tiny e' ->
+              cut_lams (IM.add v e' env) body
+          | n ->
+              App (Lam (v, cut_lams env body), cut_lams env e)
+        end
+    | e ->
+        map_expr (cut_lams env) e
+  in
+
+  let rec compress (env: var IM.t) ct : expr -> expr = function
+    | Var v ->
+        Var (IM.find v env)
+    | Lam (v, body) ->
+        Lam (ct, compress (IM.add v ct env) (ct+1) body)
+    | e ->
+        map_expr (compress env ct) e
+  in
+
+  try
+    Ok (e |> build_ssa IM.empty |> cut_lams IM.empty |> compress IM.empty 0)
+  with Err s ->
+    Error s
+
+
+
 (* Evaluating
    -------------------------------------------------------------------------- *)
 

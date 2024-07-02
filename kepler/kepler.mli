@@ -43,3 +43,4 @@ val print_expr: expr -> string
 val eval: expr -> (eval_res, string) result
 val print_res: eval_res -> string
 val print_raw_res: eval_res -> string
+val unlambda: expr -> (expr, string) result

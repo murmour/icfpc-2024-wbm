@@ -137,10 +137,15 @@ let parse_mage (s: string) : ML.expr =
 
 let compile_mage (e: ML.expr) : K.expr =
   match compile e with
-    | Ok e' -> e'
     | Error msg ->
         Printf.eprintf "compile error: %s\n" msg;
         exit 1
+    | Ok e' ->
+        match Kepler.unlambda e' with
+          | Error msg ->
+              Printf.eprintf "unlambda error: %s\n" msg;
+              exit 1
+          | Ok e'' -> e''
 
 let parse_icfp (s: string) : K.expr =
   match K.parse_expr s with
