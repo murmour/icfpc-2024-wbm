@@ -1,6 +1,7 @@
 
 module S = String
 module L = List
+module BF = Buffer
 module SM = Map.Make (String)
 
 module K = Kepler
@@ -13,6 +14,27 @@ let sprintf = Printf.sprintf
 (* Compiler
    -------------------------------------------------------------------------- *)
 
+let undash (s: string) : string =
+  let len = S.length s in
+  let buf = BF.create len in
+  let i = ref 0 in
+  while !i < len-1 do
+    match (s.[!i], s.[!i+1]) with
+      | ('\\', 'n') ->
+          BF.add_char buf '\n';
+          i := !i+2
+      | ('\\', c) ->
+          BF.add_char buf c;
+          i := !i+2
+      | (c, _) ->
+          BF.add_char buf c;
+          i := !i+1
+  done;
+  if !i = len-1 then
+    BF.add_char buf s.[!i];
+  BF.contents buf
+
+
 type env = { map: K.var SM.t; ct: int }
 
 let compile (e: ML.expr) : (K.expr, string) result =
@@ -22,7 +44,7 @@ let compile (e: ML.expr) : (K.expr, string) result =
   let rec expr (env: env) : ML.expr -> K.expr = function
     | True -> B true
     | False -> B false
-    | String s -> S s
+    | String s -> S (undash s)
     | Int s -> I (int_of_string s)
     | Neg e -> Neg (expr env e)
     | Not e -> Not (expr env e)
