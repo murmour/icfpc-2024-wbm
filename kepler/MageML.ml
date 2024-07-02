@@ -35,11 +35,25 @@ let undash (s: string) : string =
   BF.contents buf
 
 
+let static_parse (s: string) : ML.expr =
+  let s = CharStream.from_string s in
+  match Peg_MageML.program s 0 with
+    | Ok (p, _) -> p
+    | Error _ -> assert false
+
+
+let y_comb =
+  lazy (static_parse "fun a -> (fun b -> a (b b))(fun b -> a (b b))")
+
+
 type env = { map: K.var SM.t; ct: int }
 
 let compile (e: ML.expr) : (K.expr, string) result =
   let exception Err of string in
   let err s = raise (Err s) in
+
+  (* prelude *)
+  let e = ML.Let (`f, "#ycomb", [], TAny, Lazy.force y_comb, e) in
 
   let rec expr (env: env) : ML.expr -> K.expr = function
     | True -> B true
@@ -91,11 +105,14 @@ let compile (e: ML.expr) : (K.expr, string) result =
               Lam (v, aux env xs)
         in
         aux env args
-    | Let (is_rec, v, [], res_type, rhs, body) ->
-        (* todo: compile rec *)
+    | Let (`t, v, args, res_type, rhs, body) ->
+        let rhs =
+          ML.App [Var "#ycomb"; ML.Fun ((v, TAny) :: args, res_type, rhs)]
+        in
+        expr env (Let (`f, v, [], TAny, rhs, body))
+    | Let (`f, v, [], res_type, rhs, body) ->
         expr env (App [Fun ([(v, res_type)], TAny, body); rhs])
-    | Let (is_rec, v, args, res_type, rhs, body) ->
-        (* todo: compile rec *)
+    | Let (`f, v, args, res_type, rhs, body) ->
         let rhs = ML.Fun (args, res_type, rhs) in
         expr env (App [Fun ([(v, TAny)], TAny, body); rhs])
     | Var v ->
@@ -114,7 +131,7 @@ let compile (e: ML.expr) : (K.expr, string) result =
 (* Parsing
    -------------------------------------------------------------------------- *)
 
-let parse (s: string) : (Peg_MageML.expr, string) result =
+let parse (s: string) : (ML.expr, string) result =
   let s = CharStream.from_string s in
   match Peg_MageML.program s 0 with
     | Ok (p, _) ->
