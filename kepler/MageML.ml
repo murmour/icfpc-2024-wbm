@@ -69,9 +69,11 @@ let compile (e: ML.expr) : (K.expr, string) result =
               Lam (v, aux env xs)
         in
         aux env args
-    | Let (v, [], res_type, rhs, body) ->
+    | Let (is_rec, v, [], res_type, rhs, body) ->
+        (* todo: compile rec *)
         expr env (App [Fun ([(v, res_type)], TAny, body); rhs])
-    | Let (v, args, res_type, rhs, body) ->
+    | Let (is_rec, v, args, res_type, rhs, body) ->
+        (* todo: compile rec *)
         let rhs = ML.Fun (args, res_type, rhs) in
         expr env (App [Fun ([(v, TAny)], TAny, body); rhs])
     | Var v ->

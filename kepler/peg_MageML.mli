@@ -29,7 +29,7 @@ type expr =
   | If of expr * expr * expr
   | App of expr list
   | Fun of typed_arg list * type_ * expr
-  | Let of var * typed_arg list * type_ * expr * expr
+  | Let of [`t|`f] * var * typed_arg list * type_ * expr * expr
   | Var of var
 
 
