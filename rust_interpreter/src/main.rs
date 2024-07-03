@@ -6,13 +6,16 @@ use once_cell::unsync::OnceCell;
 use std::thread;
 use std::time;
 use rug::Integer;
+use table_enum::table_enum;
 
-#[derive(Debug, Clone, Copy)]
-enum UnaryOp {
-    Neg,
-    Not,
-    StrToInt,
-    IntToStr,
+table_enum! {
+    #[derive(Debug, Clone, Copy)]
+    enum UnaryOp(#[constructor] symbol: char) {
+        Neg('-'),
+        Not('!'),
+        StrToInt('#'),
+        IntToStr('$'),
+    }
 }
 
 type NumType = Integer;
@@ -21,29 +24,17 @@ type VarType = u64;
 impl UnaryOp {
     pub fn parse(body: &[char]) -> UnaryOp  {
         assert!(body.len() == 1);
-        match body[0] {
-            '-' => UnaryOp::Neg,
-            '!' => UnaryOp::Not,
-            '#' => UnaryOp::StrToInt,
-            '$' => UnaryOp::IntToStr,
-            _ => panic!()
-        }
+        UnaryOp::new(body[0]).unwrap()
     }
 
     pub fn to_string(&self) -> String {
-        let s = match self {
-            UnaryOp::Neg => "-",
-            UnaryOp::Not => "!",
-            UnaryOp::StrToInt => "#",
-            UnaryOp::IntToStr => "$",
-        };
-        String::from(s)
+        self.symbol().to_string()
     }
 }
 
 #[derive(Debug)]
 struct LazyEval {
-    expr: Rc<Expr>,
+    expr: PExpr,
     env: Env,
     res: OnceCell<ER>,
 }
@@ -63,7 +54,7 @@ enum EvalResult {
     Bool(bool),
     Int(NumType),
     Str(String),
-    Lambda(VarType, Rc<Expr>, TreeMap<VarType, Rc<LazyEval>>),
+    Lambda(VarType, PExpr, TreeMap<VarType, Rc<LazyEval>>),
 }
 
 type ER = Rc<EvalResult>;
@@ -91,66 +82,35 @@ impl EvalResult {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    Less,
-    Gt,
-    Eq,
-    Or,
-    And,
-    Concat,
-    Take,
-    Drop,
-    Apply,
+table_enum! {
+    #[derive(Debug, Clone, Copy)]
+    enum BinaryOp(#[constructor] symbol: char) {
+        Add('+'),
+        Sub('-'),
+        Mul('*'),
+        Div('/'),
+        Mod('%'),
+        Less('<'),
+        Gt('>'),
+        Eq('='),
+        Or('|'),
+        And('&'),
+        Concat('.'),
+        Take('T'),
+        Drop('D'),
+        Apply('$'),
+    }
 }
 
 impl BinaryOp {
     pub fn parse(body: &[char]) -> BinaryOp  {
         assert!(body.len() == 1);
-        match body[0] {
-            '+' => BinaryOp::Add,
-            '-' => BinaryOp::Sub,
-            '*' => BinaryOp::Mul,
-            '/' => BinaryOp::Div,
-            '%' => BinaryOp::Mod,
-            '<' => BinaryOp::Less,
-            '>' => BinaryOp::Gt,
-            '=' => BinaryOp::Eq,
-            '|' => BinaryOp::Or,
-            '&' => BinaryOp::And,
-            '.' => BinaryOp::Concat,
-            'T' => BinaryOp::Take,
-            'D' => BinaryOp::Drop,
-            '$' => BinaryOp::Apply,
-            _ => panic!()
-        }
+        BinaryOp::new(body[0]).unwrap()
     }
 
     pub fn to_string(&self) -> String {
-        let s = match self {
-            BinaryOp::Add => "+",
-            BinaryOp::Sub => "-",
-            BinaryOp::Mul => "*",
-            BinaryOp::Div => "/",
-            BinaryOp::Mod => "%",
-            BinaryOp::Less => "<",
-            BinaryOp::Gt => ">",
-            BinaryOp::Eq => "=",
-            BinaryOp::Or => "|",
-            BinaryOp::And => "&",
-            BinaryOp::Concat => ".",
-            BinaryOp::Take => "T",
-            BinaryOp::Drop => "D",
-            BinaryOp::Apply => "$",
-        };
-        String::from(s)
+        self.symbol().to_string()
     }
-
 }
 
 #[derive(Debug)]
@@ -261,10 +221,10 @@ enum Expr {
     Bool(bool),
     Int(NumType),
     Str(String),
-    Unary(UnaryOp, Rc<Expr>),
-    Binary(BinaryOp, Rc<Expr>, Rc<Expr>),
-    If(Rc<Expr>, Rc<Expr>, Rc<Expr>),
-    Lambda(VarType, Rc<Expr>),
+    Unary(UnaryOp, PExpr),
+    Binary(BinaryOp, PExpr, PExpr),
+    If(PExpr, PExpr, PExpr),
+    Lambda(VarType, PExpr),
     Var(VarType),
 }
 
@@ -284,8 +244,6 @@ impl Expr {
         }
     }
 }
-
-
 
 type Env = TreeMap<VarType, Rc<LazyEval>>;
 
@@ -336,7 +294,6 @@ fn er_str(s: String) -> ER {
 }
 
 fn eval_expr(expr: PExpr, env: Env) -> ER {
-    //println!("{}", expr.to_string());
     match expr.as_ref() {
         Expr::Bool(x) => er_bool(*x),
         Expr::Int(x) => er_int(x.clone()),
@@ -345,31 +302,17 @@ fn eval_expr(expr: PExpr, env: Env) -> ER {
             let e = eval_expr(e.clone(), env);
             match op {
                 UnaryOp::Not => {
-                    match e.as_ref() {
-                        EvalResult::Bool(x) => er_bool(!x),
-                        _ => panic!(),
-                    }
+                    er_bool(!e.bool())
                 },
                 UnaryOp::Neg => {
-                    match e.as_ref() {
-                        EvalResult::Int(x) => er_int(NumType::ZERO - x),
-                        _ => panic!(),
-                    }
+                    er_int(NumType::ZERO - e.int())
                 },
                 UnaryOp::StrToInt => {
-                    match e.as_ref() {
-                        EvalResult::Str(s) => {
-                            let chars: Vec<_> = s.chars().map(|c| *INV_MAP.get(&c).unwrap()).collect();
-                            er_int( parse_num(&chars) )
-                        }
-                        _ => panic!(),
-                    }
+                    let chars: Vec<_> = e.str().chars().map(|c| *INV_MAP.get(&c).unwrap()).collect();
+                    er_int( parse_num(&chars) )
                 },
                 UnaryOp::IntToStr => {
-                    match e.as_ref() {
-                        EvalResult::Int(x) => er_str(print_num(x.clone())),
-                        _ => panic!(),
-                    }
+                    er_str(print_num(e.int()))
                 },
             }
         },
@@ -380,14 +323,9 @@ fn eval_expr(expr: PExpr, env: Env) -> ER {
                         let body_env = lam_env.insert(
                             *var,
                             Rc::new(LazyEval::new(b.clone(), env)));
-                        //println!("Body Env: {:?}", env);
-                        let res = eval_expr(body.clone(), body_env);
-                        return res;
+                        return eval_expr(body.clone(), body_env);
                     },
-                    _ => {
-                        panic!()
-                    }
-
+                    _ => panic!()
                 }
             }
             let a = eval_expr(a.clone(), env.clone());
