@@ -12,7 +12,7 @@ type var = int
 
 type expr =
   | B of bool
-  | I of int
+  | I of Z.t
   | S of string
   | Neg of int_expr
   | Not of bool_expr
@@ -69,6 +69,13 @@ let decode_int (s: string) : int =
   s |> S.iter (fun c -> i := !i*94 + (Char.code c) - 33);
   !i
 
+let z94 = Z.of_int 94
+
+let decode_zint (s: string) : Z.t =
+  let i = ref Z.zero in
+  s |> S.iter (fun c -> let j = Char.code c - 33 in i := Z.(!i*z94 + of_int j));
+  !i
+
 let encode_int (i: int) : string =
   assert (i >= 0);
   if i = 0 then
@@ -83,7 +90,23 @@ let encode_int (i: int) : string =
     done;
     let s = Buffer.contents b in
     let len = S.length s in
-    S.init len (fun i -> String.get s (len-i-1))
+    S.init len (fun i -> S.get s (len-i-1))
+
+let encode_zint (i: Z.t) : string =
+  assert Z.(geq i zero);
+  if Z.(equal i zero) then
+    S.make 1 (Char.chr 33)
+  else
+    let b = BF.create 20 in
+    let n = ref i in
+    while Z.(gt !n zero) do
+      let i: int = Z.(to_int (!n mod z94)) in
+      BF.add_char b (Char.chr (i+33));
+      n := Z.(!n/z94)
+    done;
+    let s = Buffer.contents b in
+    let len = S.length s in
+    S.init len (fun i -> S.get s (len-i-1))
 
 
 (* Parsing
@@ -101,7 +124,7 @@ let parse_expr (s: string) : (expr, string) result =
       | ' ' -> incr i; expr ()
       | 'T' -> incr i; B true
       | 'F' -> incr i; B false
-      | 'I' -> incr i; I (int ())
+      | 'I' -> incr i; I (zint ())
       | 'S' -> incr i; S (decode_string (body ()))
       | 'U' ->
           incr i;
@@ -151,6 +174,9 @@ let parse_expr (s: string) : (expr, string) result =
   and int () : int =
     decode_int (body ())
 
+  and zint () : Z.t =
+    decode_zint (body ())
+
   and body () : string =
     let b = BF.create 20 in
     while match s.[!i] with '!'..'~' -> true | _ -> false do
@@ -170,7 +196,7 @@ let print_expr (e: expr) : string =
   let rec aux: expr -> string = function
     | B true -> "t"
     | B false -> "f"
-    | I i -> string_of_int i
+    | I i -> Z.to_string i
     | S s -> sprintf "\"%s\"" s
     | Neg e -> sprintf "(-(%s))" (aux e)
     | Not e -> sprintf "(not %s)" (aux e)
@@ -204,7 +230,7 @@ let print_icfp (e: expr) : string =
   let rec aux: expr -> string = function
     | B true -> "T"
     | B false -> "F"
-    | I i -> sprintf "I%s" (encode_int i)
+    | I i -> sprintf "I%s" (encode_zint i)
     | S s -> sprintf "S%s" (encode_string s)
     | Neg e -> sprintf "U- %s" (aux e)
     | Not e -> sprintf "U! %s" (aux e)
@@ -267,7 +293,8 @@ let map_expr (f: expr -> expr) (e: expr) : expr =
 (* is it a single op that encodes into 1-2 characters? *)
 let is_tiny: expr -> bool = function
   | B _ -> true
-  | Var i | I i when i < 94 -> true
+  | Var i when (i < 94) -> true
+  | I i when Z.(lt i z94) -> true
   | S s when S.length s < 2 -> true
   | _ -> false
 
@@ -339,7 +366,7 @@ let unlambda (e: expr) : (expr, string) result =
 
 type eval_res =
   | B of bool
-  | I of int
+  | I of Z.t
   | S of string
   | Lam of var * expr * eval_res Lazy.t IM.t
 
@@ -347,7 +374,7 @@ type eval_res =
 let print_res (r: eval_res) : string =
   match r with
     | B b -> sprintf "%b" b
-    | I i -> sprintf "%d" i
+    | I i -> sprintf "%s" (Z.to_string i)
     | S s -> sprintf "\"%s\"" s
     | Lam (v, _, _) -> sprintf "fun v%i -> ..." v
 
@@ -355,7 +382,7 @@ let print_res (r: eval_res) : string =
 let print_raw_res (r: eval_res) : string =
   match r with
     | B b -> sprintf "%b" b
-    | I i -> sprintf "%d" i
+    | I i -> sprintf "%s" (Z.to_string i)
     | S s -> s
     | Lam (v, _, _) -> sprintf "fun v%i -> ..." v
 
@@ -372,7 +399,7 @@ let eval (e: expr) : (eval_res, string) result =
       | S s -> S s
       | Neg e ->
           begin match eval env e with
-            | I i -> I (-i)
+            | I i -> I (Z.neg i)
             | r -> err (sprintf "Neg got %s" (pp r))
           end
       | Not e ->
@@ -382,54 +409,55 @@ let eval (e: expr) : (eval_res, string) result =
           end
       | StoI e ->
           begin match eval env e with
-            | S s -> I (decode_int (encode_string s))
+            | S s -> I (decode_zint (encode_string s))
             | r -> err (sprintf "StoI got %s" (pp r))
           end
       | ItoS e ->
           begin match eval env e with
-            | I i when i < 0 -> err (sprintf "ItoS got %d" i)
-            | I i -> S (decode_string (encode_int i))
+            | I i when Z.(lt i zero) ->
+                err (sprintf "ItoS got %s" (Z.to_string i))
+            | I i -> S (decode_string (encode_zint i))
             | r -> err (sprintf "ItoS got %s" (pp r))
           end
       | Add (a, b) ->
           begin match (eval env a, eval env b) with
-            | (I a, I b) -> I (a+b)
+            | (I a, I b) -> I Z.(a+b)
             | (a, b) -> err (sprintf "Add got %s, %s" (pp a) (pp b))
           end
       | Sub (a, b) ->
           begin match (eval env a, eval env b) with
-            | (I a, I b) -> I (a-b)
+            | (I a, I b) -> I Z.(a-b)
             | (a, b) -> err (sprintf "Sub got %s, %s" (pp a) (pp b))
           end
       | Mul (a, b) ->
           begin match (eval env a, eval env b) with
-            | (I a, I b) -> I (a*b)
+            | (I a, I b) -> I Z.(a*b)
             | (a, b) -> err (sprintf "Mul got %s, %s" (pp a) (pp b))
           end
       | Div (a, b) ->
           begin match (eval env a, eval env b) with
-            | (I a, I b) -> I (a/b)
+            | (I a, I b) -> I Z.(a/b)
             | (a, b) -> err (sprintf "Div got %s, %s" (pp a) (pp b))
           end
       | Mod (a, b) ->
           begin match (eval env a, eval env b) with
-            | (I a, I b) -> I (a mod b)
+            | (I a, I b) -> I Z.(a mod b)
             | (a, b) -> err (sprintf "Mod got %s, %s" (pp a) (pp b))
           end
       | Lt (a, b) ->
           begin match (eval env a, eval env b) with
-            | (I a, I b) -> B (a < b)
+            | (I a, I b) -> B Z.(lt a b)
             | (a, b) -> err (sprintf "Lt got %s, %s" (pp a) (pp b))
           end
       | Gt (a, b) ->
           begin match (eval env a, eval env b) with
-            | (I a, I b) -> B (a > b)
+            | (I a, I b) -> B Z.(gt a b)
             | (a, b) -> err (sprintf "Gt got %s, %s" (pp a) (pp b))
           end
       | Eq (a, b) ->
           begin match (eval env a, eval env b) with
             | (B a, B b) -> B (a = b)
-            | (I a, I b) -> B (a = b)
+            | (I a, I b) -> B Z.(equal a b)
             | (S a, S b) -> B (a = b)
             | (a, b) -> err (sprintf "Eq got %s, %s" (pp a) (pp b))
           end
@@ -462,12 +490,16 @@ let eval (e: expr) : (eval_res, string) result =
           end
       | Take (a, b) ->
           begin match (eval env a, eval env b) with
-            | (I i, S s) -> S (String.sub s 0 i)
+            | (I i, S s) ->
+                let i = Z.to_int i in (* raises Overflow *)
+                S (S.sub s 0 i) (* raises Invalid_argument *)
             | (a, b) -> err (sprintf "Take got %s, %s" (pp a) (pp b))
           end
       | Drop (a, b) ->
           begin match (eval env a, eval env b) with
-            | (I i, S s) -> S (String.sub s i (S.length s - i))
+            | (I i, S s) ->
+                let i = Z.to_int i in (* raises Overflow *)
+                S (S.sub s i (S.length s - i)) (* raises Invalid_argument *)
             | (a, b) -> err (sprintf "Take got %s, %s" (pp a) (pp b))
           end
       | If (cond, thn, els) ->

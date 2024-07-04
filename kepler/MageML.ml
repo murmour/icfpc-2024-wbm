@@ -59,7 +59,7 @@ let compile (e: ML.expr) : (K.expr, string) result =
     | True -> B true
     | False -> B false
     | String s -> S (undash s)
-    | Int s -> I (int_of_string s)
+    | Int s -> I (Z.of_string s)
     | Neg e -> Neg (expr env e)
     | Not e -> Not (expr env e)
     | Add (a, b) -> Add (expr env a, expr env b)

@@ -3,7 +3,7 @@ type var = int
 
 type expr =
   | B of bool
-  | I of int
+  | I of Z.t
   | S of string
   | Neg of int_expr
   | Not of bool_expr
