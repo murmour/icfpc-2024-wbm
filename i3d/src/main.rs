@@ -1,294 +1,120 @@
+mod interpreter;
 
-use std::collections::HashMap;
+// fn test() {
+//     let summ = "#
+//     . . . . 0 . . . .
+//     . B > . = . . . .
+//     . v 1 . . > . . .
+//     . . - . . . + S .
+//     . . . . . ^ . . .
+//     . . v . . 0 > . .
+//     . . . . . . A + .
+//     . 1 @ 6 . . < . .
+//     . . 3 . 0 @ 3 . .
+//     . . . . . 3 . . .
+//     #";
+//     let s0 = State::from_string(summ, 7.into(), 8.into());
+//     println!("{:?}", s0);
+//     let res = simulate(s0);
+//     println!("{:?}", res);
+// }
 
-use rug::{Complete, Integer};
-use table_enum::table_enum;
+// fn main() {
+//     test();
+// }
 
-table_enum! {
-    #[derive(Clone, Debug, PartialEq)]
-    enum Operator(#[constructor] symbol: char) {
-        Left('<'),
-        Right('>'),
-        Up('^'),
-        Down('v'),
-        Add('+'),
-        Sub('-'),
-        Mul('*'),
-        Div('/'),
-        Mod('%'),
-        Warp('@'),
-        Eq('='),
-        Neq('#'),
-        Submit('S'),
-        InputA('A'),
-        InputB('B'),
-    }
+use std::{cell::RefCell, fs, rc::Rc, str::FromStr};
+
+use enums::Key;
+use fltk::{prelude::*, *};
+use interpreter::{Cell, Operator, State, UpdateResult};
+use anyhow::Result as R;
+use rug::Integer;
+
+enum SimulationStatus {
+    Initial,
+    InProgress,
+    Finished(Cell),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-enum Cell {
-    Empty,
-    Consumed, // special value used during computation
-    Num(Integer),
-    Op(Operator),
+struct Simulation {
+    states: Vec<State>,
+    status: SimulationStatus,
+    tick: usize,
 }
 
-impl Cell {
-    fn is_value(&self) -> bool {
-        !matches!(&self, Cell::Empty | Cell::Consumed)
+impl Simulation {
+    fn new(s0: State) -> Self {
+        Self { states: vec![s0], status: SimulationStatus::Initial, tick: 1 }
     }
-    fn num(&self) -> Option<&Integer> {
-        if let Cell::Num(x) = self {
-            Some(x)
-        } else {
-            None
+
+    fn cur_state(&self) -> &State {
+        self.states.last().unwrap()
+    }
+
+    fn set_input(&mut self, a: &str, b: &str) -> R<()> {
+        if matches!(self.status, SimulationStatus::Initial) {
+            let a = Integer::from_str(a)?;
+            let b = Integer::from_str(b)?;
+            self.states[0].instantiate(a, b);
+            self.status = SimulationStatus::InProgress;
         }
+        Ok(())
     }
-}
 
-#[derive(Debug)]
-struct State {
-    cells: Vec<Vec<Cell>>,
-    t: usize,
-}
-
-enum UpdateResult {
-    Ok(State),
-    Warp(usize, HashMap<(i32, i32), Cell>), // t, (x, y) -> Value
-    Stop(Cell),
-}
-
-type Arr = Vec<Vec<Cell>>;
-
-struct Warp {
-    x: i32,
-    y: i32,
-    dt: usize,
-    v: Cell,
-}
-
-impl State {
-    fn update(&self) -> UpdateResult {
-        let n = self.cells.len();
-        let m = self.cells[0].len();
-        let mut res = vec![vec![Cell::Empty; m]; n];
-
-        let consume = |a: &mut Arr, i: usize, j: usize| {
-            if matches!(a[i][j], Cell::Empty) {
-                a[i][j] = Cell::Consumed;
-            }
-        };
-
-        let write = |a: &mut Arr, i: usize, j: usize, c: Cell| {
-            if matches!(a[i][j], Cell::Empty | Cell::Consumed) {
-                a[i][j] = c;
-            } else {
-                panic!("conflicting write!");
-            }
-        };
-
-        let mut warps = vec![];
-        let mut reduced = false;
-
-        for i in 1..n-1 {
-            for j in 1..m-1 {
-
-                let left = || &self.cells[i][j-1];
-                let right =  || &self.cells[i][j+1];
-                let up = || &self.cells[i-1][j];
-                let down = || &self.cells[i+1][j];
-
-                let binary = |a: &mut Arr, f: fn(&Integer, &Integer) -> Integer, allow_zero: bool| {
-                    if let (Some(x), Some(y)) = (left().num(), up().num()) {
-                        if !allow_zero && *y == Integer::ZERO { return false }
-                        consume(a, i-1, j);
-                        consume(a, i, j-1);
-                        let z = f(x, y);
-                        write(a, i+1, j, Cell::Num(z.clone()));
-                        write(a, i, j+1, Cell::Num(z));
-                        true
-                    } else {
-                        false
+    fn step(&mut self) -> R<()> {
+        if matches!(self.status, SimulationStatus::InProgress) {
+            self.tick += 1;
+            match self.states.last().unwrap().update()? {
+                UpdateResult::Ok(s) => self.states.push(s),
+                UpdateResult::Warp(t, vals) => {
+                    //println!("warping to {} : {:?}", t, vals);
+                    while self.states.len() > t { self.states.pop(); }
+                    for ((x, y), v) in vals.into_iter() {
+                        self.states[t-1].cells[x as usize][y as usize] = v;
                     }
-                };
-
-                match &self.cells[i][j] {
-                    Cell::Empty  => (),
-                    Cell::Num(_) => (),
-                    Cell::Op(op) => match op {
-                        Operator::Right => {
-                            if left().is_value() {
-                                consume(&mut res, i, j-1);
-                                write(&mut res, i, j+1, left().clone());
-                                reduced = true;
-                            }
-                        },
-                        Operator::Left => {
-                            if right().is_value() {
-                                consume(&mut res, i, j+1);
-                                write(&mut res, i, j-1, right().clone());
-                                reduced = true;
-                            }
-                        },
-                        Operator::Up => {
-                            if down().is_value() {
-                                consume(&mut res, i+1, j);
-                                write(&mut res, i-1, j, down().clone());
-                                reduced = true;
-                            }
-                        },
-                        Operator::Down => {
-                            if up().is_value() {
-                                consume(&mut res, i-1, j);
-                                write(&mut res, i+1, j, up().clone());
-                                reduced = true;
-                            }
-                        },
-                        Operator::Add => {
-                            if binary(&mut res, |a, b| (a + b).complete(), true) {
-                                reduced = true;
-                            }
-                        }
-                        Operator::Sub => {
-                            if binary(&mut res, |a, b| (a - b).complete(), true) {
-                                reduced = true;
-                            }
-                        },
-                        Operator::Mul => {
-                            if binary(&mut res, |a, b| (a * b).complete(), true) {
-                                reduced = true;
-                            }
-                        },
-                        Operator::Div => {
-                            if binary(&mut res, |a, b| (a / b).complete(), false) {
-                                reduced = true;
-                            }
-                        },
-                        Operator::Mod => {
-                            if binary(&mut res, |a, b| (a % b).complete(), false) {
-                                reduced = true;
-                            }
-                        }
-                        Operator::Warp => {
-                            if up().is_value() {
-                                if let (Some(dx), Some(dy), Some(dt)) = (left().num(), right().num(), down().num()) {
-                                    if *dt > 0 && *dt < self.t {
-                                        warps.push(Warp { x: i as i32 - dy.to_i32().unwrap(), y: j as i32 - dx.to_i32().unwrap(), dt: dt.to_usize().unwrap(), v: up().clone()});
-                                    }
-                                }
-                            }
-                        },
-                        Operator::Eq => {
-                            if left().is_value() && left() == up() {
-                                consume(&mut res, i-1, j);
-                                consume(&mut res, i, j-1);
-                                let z = left().clone();
-                                write(&mut res, i+1, j, z.clone());
-                                write(&mut res, i, j+1, z);
-                                reduced = true;
-                            }
-                        },
-                        Operator::Neq => {
-                            if left().is_value() && left() != up() {
-                                consume(&mut res, i-1, j);
-                                consume(&mut res, i, j-1);
-                                write(&mut res, i+1, j, left().clone());
-                                write(&mut res, i, j+1, up().clone());
-                                reduced = true;
-                            }
-                        },
-                        Operator::Submit => (),
-                        Operator::InputA => panic!(),
-                        Operator::InputB => panic!(),
-                    },
-                    Cell::Consumed => panic!(),
-                }
+                },
+                UpdateResult::Stop(res) => {
+                    self.status = SimulationStatus::Finished(res)
+                },
             }
         }
-        // check if submit is overwritten
-        let mut submit = None;
-        for i in 0 .. n {
-            for j in 0 .. m {
-                if matches!(self.cells[i][j], Cell::Op(Operator::Submit)) && res[i][j].is_value() {
-                    assert!(submit.is_none(), "multiple submit");
-                    submit = Some(res[i][j].clone())
-                }
-            }
-        }
-        if let Some(x) = submit {
-            UpdateResult::Stop(x)
-        } else if !warps.is_empty() {
-            let dt = warps[0].dt;
-            assert!(warps.iter().all(|w| w.dt == dt), "different dt!");
-            let mut wmap = HashMap::new();
-            for Warp { x, y, dt: _, v } in warps {
-                if let Some(old) = wmap.insert((x, y), v.clone()) {
-                    assert!(old == v, "wrap writes different values");
-                }
-            }
-            UpdateResult::Warp(self.t - dt, wmap)
-        } else if !reduced {
-            UpdateResult::Stop(Cell::Empty)
-        } else {
-            for i in 0 .. n {
-                for j in 0 ..m {
-                    if matches!(res[i][j], Cell::Consumed) {
-                        res[i][j] = Cell::Empty
-                    } else if matches!(res[i][j], Cell::Empty) {
-                        res[i][j] = self.cells[i][j].clone()
-                    }
-                }
-            }
-            UpdateResult::Ok(State { cells: res, t: self.t + 1 })
-        }
-    }
-
-    fn from_string(s: &str, a: Integer, b: Integer) -> State {
-        let lines: Vec<_> = s.lines().collect();
-        let h = lines.len();
-        let w = lines.iter().map(|s| s.split_ascii_whitespace().count()).max().unwrap();
-        let mut cells = vec![vec![Cell::Empty; w + 2]; h + 2];
-        for i in 0 .. h {
-            for (j, s) in lines[i].split_ascii_whitespace().enumerate() {
-                if s == "." { continue; }
-                cells[i+1][j+1] = if let Some(op) = Operator::new(s.chars().nth(0).unwrap()) {
-                    match op {
-                        Operator::InputA => Cell::Num(a.clone()),
-                        Operator::InputB => Cell::Num(b.clone()),
-                        _ => Cell::Op(op)
-                    }
-                } else {
-                    let n: i32 = s.parse().unwrap();
-                    assert!(n >= -99 && n <= 99);
-                    Cell::Num(n.into())
-                }
-            }
-        }
-        State { cells, t: 1 }
+        Ok(())
     }
 }
 
-fn simulate(s0: State) -> Cell {
-    let mut states = vec![s0];
-    loop {
-        match states.last().unwrap().update() {
-            UpdateResult::Ok(s) => states.push(s),
-            UpdateResult::Warp(t, vals) => {
-                //println!("warping to {} : {:?}", t, vals);
-                while states.len() > t { states.pop(); }
-                for ((x, y), v) in vals.into_iter() {
-                    states[t-1].cells[x as usize][y as usize] = v;
-                }
-            },
-            UpdateResult::Stop(res) => {
-                return res;
-            },
+fn event_char() -> Option<char> {
+    if app::event_key().bits() > 128 { return None; }
+    if app::event_key_down(Key::ShiftL) || app::event_key_down(Key::ShiftR) {
+        let t = app::event_key().to_char()?;
+        match t {
+            'a'..='z' => Some(t.to_ascii_uppercase()),
+            '0' => Some(')'),
+            '1' => Some('!'),
+            '2' => Some('@'),
+            '3' => Some('#'),
+            '4' => Some('$'),
+            '5' => Some('%'),
+            '6' => Some('^'),
+            '7' => Some('&'),
+            '8' => Some('*'),
+            '9' => Some('('),
+            '/' => Some('?'),
+            '-' => Some('_'),
+            '=' => Some('+'),
+            '`' => Some('~'),
+            ';' => Some(':'),
+            '.' => Some('>'),
+            ',' => Some('<'),
+            _ => None
         }
+    } else {
+        app::event_key().to_char()
     }
 }
 
-fn test() {
-    let summ = "#
+fn main() {
+    let summ = "
     . . . . 0 . . . .
     . B > . = . . . .
     . v 1 . . > . . .
@@ -298,14 +124,182 @@ fn test() {
     . . . . . . A + .
     . 1 @ 6 . . < . .
     . . 3 . 0 @ 3 . .
-    . . . . . 3 . . .
-    #";
-    let s0 = State::from_string(summ, 7.into(), 8.into());
-    println!("{:?}", s0);
-    let res = simulate(s0);
-    println!("{:?}", res);
+    . . . . . 3 . . .";
+    let s0 = Rc::new(RefCell::new(State::from_string(summ)));
+    let sim0 = Rc::new(RefCell::new(Simulation::new(s0.borrow().clone())));
+
+    let app = app::App::default().with_scheme(app::Scheme::Gtk);
+    let mut wind = window::Window::default().with_size(800, 600);
+    let mut layout = group::Flex::default_fill().column();
+    let toolbar = group::Pack::default_fill().with_size(0, 25).with_type(group::PackType::Horizontal);
+    let mut button_step = button::Button::default().with_size(100, 0).with_label("Step");
+    let mut button_reset = button::Button::default().with_size(100, 0).with_label("Reset");
+    let mut button_load = button::Button::default().with_size(100, 0).with_label("Load");
+    let _ = frame::Frame::default().with_label("A:").with_size(20, 0);
+    let mut input_a = input::Input::default().with_size(150, 0);
+    input_a.set_value("5");
+    let _ = frame::Frame::default().with_label("B:").with_size(20, 0);
+    let mut input_b = input::Input::default().with_size(150, 0);
+    input_b.set_value("7");
+    toolbar.end();
+    layout.fixed(&toolbar, 25);
+
+    let mut table = table::Table::default();
+    table.set_rows(sim0.borrow().cur_state().cells.len() as i32 - 2);
+    //table.set_row_header(true);
+    table.set_row_resize(true);
+    table.set_row_height_all(30);
+    table.set_cols(sim0.borrow().cur_state().cells[0].len() as i32 - 2);
+    //table.set_col_header(true);
+    table.set_col_width_all(30);
+    table.set_col_resize(true);
+    table.end();
+
+    let status0 = frame::Frame::default().with_size(200, 20).with_label("Ready");
+    layout.fixed(&status0, 20);
+    layout.end();
+
+    wind.resizable(&layout);
+    wind.end();
+    wind.show();
+
+
+    let sim = sim0.clone();
+    let mut status = status0.clone();
+    let mut table_ = table.clone();
+    let s0_ = s0.clone();
+    let mut reset = move || {
+        sim.replace(Simulation::new(s0_.borrow().clone()));
+        status.set_label("Ready");
+        table_.set_rows(sim.borrow().cur_state().cells.len() as i32 - 2);
+        table_.set_cols(sim.borrow().cur_state().cells[0].len() as i32 - 2);
+        table_.redraw();
+    };
+
+    let s0_ = s0.clone();
+    let mut reset_ = reset.clone();
+    button_load.set_callback(move |_| {
+        let mut dialog = dialog::NativeFileChooser::new(dialog::NativeFileChooserType::BrowseFile);
+        dialog.show();
+        let data = fs::read_to_string(dialog.filename()).unwrap();
+        s0_.replace(State::from_string(&data));
+        reset_();
+    });
+
+    let sim = sim0.clone();
+    let mut status = status0.clone();
+    let mut table_ = table.clone();
+    let s0_ = s0.clone();
+    button_step.set_callback(move |_| {
+        if matches!(sim.borrow().status, SimulationStatus::Initial) {
+            sim.replace(Simulation::new(s0_.borrow().clone())); // apply changes
+        }
+        if let Err(e) = sim.borrow_mut().set_input(&input_a.value(), &input_b.value()) {
+            status.set_label(&e.to_string());
+            return;
+        }
+        if let Err(e) = sim.borrow_mut().step() {
+            status.set_label(&e.to_string());
+            return;
+        }
+        if let SimulationStatus::Finished(c) = &sim.borrow().status {
+            status.set_label(&format!("Computation finished: {}", c.to_string()))
+        } else {
+            status.set_label(&format!("Tick = {}, t = {}", sim.borrow().tick, sim.borrow().states.len()))
+        }
+        table_.redraw();
+    });
+
+
+    button_reset.set_callback(move |_| {
+        reset();
+    });
+
+    // Called when the table is drawn then when it's redrawn due to events
+    let s0_ = s0.clone();
+    let sim = sim0.clone();
+    table.draw_cell(move |t, ctx, row, col, x, y, w, h| match ctx {
+        table::TableContext::StartPage => draw::set_font(enums::Font::Helvetica, 14),
+        table::TableContext::Cell => {
+            let c = if matches!(sim.borrow().status, SimulationStatus::Initial) {
+                s0_.borrow().cells[row as usize + 1][col as usize + 1].clone()
+            } else {
+                sim.borrow().cur_state().cells[row as usize + 1][col as usize + 1].clone()
+            };
+            let col =
+            if t.is_selected(row, col) { enums::Color::from_u32(0x00D3_D3D3) } else {
+                match &c {
+                    Cell::Op(op) => if let Operator::Submit = op { enums::Color::from_rgb(255, 192, 192) } else { enums::Color::from_rgb(192, 255, 192) }
+                    _ => enums::Color::White
+                }
+            };
+            draw_data(
+                &c.to_string(),
+                x,
+                y,
+                w,
+                h,
+                col,
+            )
+        }, // Data in cells
+        _ => (),
+    });
+
+    let s0_ = s0.clone();
+    table.handle(move|t, e| {
+        match e {
+            enums::Event::Push => t.take_focus().unwrap(),
+            enums::Event::KeyDown => {
+                if !matches!(sim0.borrow().status, SimulationStatus::Initial) { return false; }
+                //println!("{:?}", event_char());
+                if app::event_key() == enums::Key::Delete {
+                    if let Some((r1, c1, r2, c2)) = t.try_get_selection() {
+                        for r in r1..=r2 {
+                            for c in c1..=c2 {
+                                s0_.borrow_mut().cells[r as usize + 1][c as usize + 1] = Cell::Empty;
+                            }
+                        }
+                    }
+                    t.redraw();
+                    return false;
+                }
+                let mut cell = None;
+                if event_char() == Some('.') {
+                    cell = Some(Cell::Empty);
+                } else if let Some(op) = Operator::new(event_char().unwrap_or('x')) {
+                    cell = Some(Cell::Op(op))
+                } else if event_char() == Some('0') {
+                    if let Some(s) = dialog::input_default("Enter number:", "") {
+                        if let Ok(x) = s.parse::<i32>() {
+                            if -100 < x && x < 100 {
+                                cell = Some(Cell::Num(x.into()))
+                            }
+                        }
+                    }
+                }
+                if let Some(cell) = cell {
+                    if let Some((r, c, _, _)) = t.try_get_selection() {
+                        s0_.borrow_mut().cells[r as usize + 1][c as usize + 1] = cell;
+                        t.redraw();
+                    }
+                }
+            },
+            _ => ()
+        }
+        false
+    });
+
+    app.run().unwrap();
 }
 
-fn main() {
-    test();
+fn draw_data(txt: &str, x: i32, y: i32, w: i32, h: i32, col: enums::Color) {
+    draw::push_clip(x, y, w, h);
+    draw::set_draw_color(col);
+    draw::draw_rectf(x, y, w, h);
+    draw::set_draw_color(enums::Color::Gray0);
+    draw::set_font(enums::Font::Helvetica, 14);
+    draw::draw_text2(txt, x, y, w, h, enums::Align::Center);
+    draw::set_draw_rgb_color(192, 192, 192);
+    draw::draw_rect(x, y, w, h);
+    draw::pop_clip();
 }

@@ -7,4 +7,6 @@ edition = "2021"
 
 [dependencies]
 rug = "1.24.1"
-table_enum = { path = "../../table-enum" }
+table_enum = "0.3.0"
+fltk = "^1.4"
+anyhow = "1.0.86"
