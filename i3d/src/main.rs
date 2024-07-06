@@ -25,10 +25,12 @@ mod interpreter;
 
 use std::{cell::RefCell, fs, rc::Rc, str::FromStr};
 
-use enums::Key;
+use enums::{Key, Shortcut};
 use fltk::{prelude::*, *};
 use interpreter::{Cell, Operator, State, UpdateResult};
 use anyhow::Result as R;
+use itertools::Itertools;
+use menu::MenuFlag;
 use rug::Integer;
 
 enum SimulationStatus {
@@ -114,6 +116,7 @@ fn event_char() -> Option<char> {
 }
 
 fn main() {
+    const CELL_SIZE: i32 = 30;
     let summ = "
     . . . . 0 . . . .
     . B > . = . . . .
@@ -135,6 +138,7 @@ fn main() {
     let mut button_step = button::Button::default().with_size(100, 0).with_label("Step");
     let mut button_reset = button::Button::default().with_size(100, 0).with_label("Reset");
     let mut button_load = button::Button::default().with_size(100, 0).with_label("Load");
+    let mut button_save = button::Button::default().with_size(100, 0).with_label("Save");
     let _ = frame::Frame::default().with_label("A:").with_size(20, 0);
     let mut input_a = input::Input::default().with_size(150, 0);
     input_a.set_value("5");
@@ -148,10 +152,10 @@ fn main() {
     table.set_rows(sim0.borrow().cur_state().cells.len() as i32 - 2);
     //table.set_row_header(true);
     table.set_row_resize(true);
-    table.set_row_height_all(30);
+    table.set_row_height_all(CELL_SIZE);
     table.set_cols(sim0.borrow().cur_state().cells[0].len() as i32 - 2);
     //table.set_col_header(true);
-    table.set_col_width_all(30);
+    table.set_col_width_all(CELL_SIZE);
     table.set_col_resize(true);
     table.end();
 
@@ -181,9 +185,20 @@ fn main() {
     button_load.set_callback(move |_| {
         let mut dialog = dialog::NativeFileChooser::new(dialog::NativeFileChooserType::BrowseFile);
         dialog.show();
+        if !dialog.filename().exists() { return; }
         let data = fs::read_to_string(dialog.filename()).unwrap();
         s0_.replace(State::from_string(&data));
         reset_();
+    });
+
+    let s0_ = s0.clone();
+    button_save.set_callback(move |_| {
+        let mut dialog = dialog::NativeFileChooser::new(dialog::NativeFileChooserType::BrowseSaveFile);
+        dialog.show();
+        let data = s0_.borrow().to_string();
+        if fs::write(dialog.filename(), data).is_err() {
+            dialog::alert_default("Save failed");
+        }
     });
 
     let sim = sim0.clone();
@@ -211,8 +226,9 @@ fn main() {
     });
 
 
+    let mut reset_ = reset.clone();
     button_reset.set_callback(move |_| {
-        reset();
+        reset_();
     });
 
     // Called when the table is drawn then when it's redrawn due to events
@@ -221,34 +237,94 @@ fn main() {
     table.draw_cell(move |t, ctx, row, col, x, y, w, h| match ctx {
         table::TableContext::StartPage => draw::set_font(enums::Font::Helvetica, 14),
         table::TableContext::Cell => {
+            let ri = row as usize + 1;
+            let ci = col as usize + 1;
             let c = if matches!(sim.borrow().status, SimulationStatus::Initial) {
-                s0_.borrow().cells[row as usize + 1][col as usize + 1].clone()
+                s0_.borrow().cells[ri][ci].clone()
             } else {
-                sim.borrow().cur_state().cells[row as usize + 1][col as usize + 1].clone()
+                sim.borrow().cur_state().cells[ri][ci].clone()
             };
             let col =
             if t.is_selected(row, col) { enums::Color::from_u32(0x00D3_D3D3) } else {
                 match &c {
-                    Cell::Op(op) => if let Operator::Submit = op { enums::Color::from_rgb(255, 192, 192) } else { enums::Color::from_rgb(192, 255, 192) }
+                    Cell::Op(op) => {
+                        if let Operator::Submit = op { enums::Color::from_rgb(255, 192, 192) } else { enums::Color::from_rgb(192, 255, 192) }
+                    }
                     _ => enums::Color::White
                 }
             };
+            let mut s = c.to_string();
+            if s == "." { s = String::new() }
             draw_data(
-                &c.to_string(),
+                &s,
                 x,
                 y,
                 w,
                 h,
                 col,
-            )
+            );
+            // if let Cell::Op(Operator::Warp) = &c {
+            //     let dx = if let Cell::Num(x) = &s0_.borrow().cells[ri][ci-1] { Some(x.to_i32_wrapping()) } else { None };
+            //     let dy = if let Cell::Num(x) = &s0_.borrow().cells[ri][ci+1] { Some(x.to_i32_wrapping()) } else { None };
+            //     if let (Some(dx), Some(dy)) = (dx, dy) {
+            //         draw::set_color_rgb(0, 0, 255);
+            //         draw::draw_line(x + 20, y + 20, x - CELL_SIZE * dx + 20, y - CELL_SIZE * dy + 20);
+            //     }
+            // }
         }, // Data in cells
         _ => (),
     });
 
+    let clipboard = Rc::new(RefCell::new(None));
+
     let s0_ = s0.clone();
     table.handle(move|t, e| {
         match e {
-            enums::Event::Push => t.take_focus().unwrap(),
+            enums::Event::Push => {
+                t.take_focus().unwrap();
+                if app::event_mouse_button() == app::MouseButton::Right {
+                    if !matches!(sim0.borrow().status, SimulationStatus::Initial) { return false; }
+                    if let Some((r1, c1, r2, c2)) = t.try_get_selection() {
+                        let (ex, ey) = app::event_coords();
+                        let menu = menu::MenuItem::new(&["Copy", "Cut", "Paste"]);
+                        if let Some(m) = menu.popup(ex, ey) {
+                            if let Some(label) = m.label() {
+                                if label == "Copy" || label == "Cut" {
+                                    let data = s0_.borrow().cells[r1 as usize + 1 ..= r2 as usize + 1].iter().
+                                        map(|row| { row[c1 as usize + 1 ..= c2 as usize + 1].iter().cloned().collect_vec() }).collect_vec();
+                                    clipboard.replace(Some(data));
+                                    if label == "Cut" {
+                                        for i in r1 as usize ..= r2 as usize {
+                                            for j in c1 as usize ..= c2 as usize {
+                                                s0_.borrow_mut().cells[i+1][j+1] = Cell::Empty;
+                                            }
+                                        }
+                                        reset();
+                                    }
+                                } else { // Paste
+                                    if let Some(data) = clipboard.borrow().as_ref() {
+                                        {
+                                            let mut s0_b = s0_.borrow_mut();
+                                            let n_old = s0_b.cells.len();
+                                            let m_old = s0_b.cells[0].len();
+                                            let n_new = r1 as usize + 1 + data.len() + 1;
+                                            let m_new = c1 as usize + 1 + data[0].len() + 1;
+                                            if n_new > n_old { s0_b.cells.resize(n_new, vec![Cell::Empty; m_new]) }
+                                            if m_new > m_old { for row in s0_b.cells.iter_mut() { row.resize(m_new, Cell::Empty) } }
+                                            for (i, row) in data.iter().enumerate() {
+                                                for (j, c) in row.iter().enumerate() {
+                                                    s0_b.cells[r1 as usize + 1 + i][c1 as usize + 1 + j] = c.clone();
+                                                }
+                                            }
+                                        }
+                                        reset();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
             enums::Event::KeyDown => {
                 if !matches!(sim0.borrow().status, SimulationStatus::Initial) { return false; }
                 //println!("{:?}", event_char());
@@ -268,7 +344,9 @@ fn main() {
                     cell = Some(Cell::Empty);
                 } else if let Some(op) = Operator::new(event_char().unwrap_or('x')) {
                     cell = Some(Cell::Op(op))
-                } else if event_char() == Some('0') {
+                } else if matches!(event_char(), Some('0'..='9')) {
+                    cell = Some(Cell::Num((event_char().unwrap() as i32 - '0' as i32).into()))
+                } else if event_char() == Some('n') {
                     if let Some(s) = dialog::input_default("Enter number:", "") {
                         if let Ok(x) = s.parse::<i32>() {
                             if -100 < x && x < 100 {

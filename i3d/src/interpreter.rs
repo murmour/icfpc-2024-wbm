@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use rug::{Complete, Integer};
 use table_enum::table_enum;
 use anyhow::{bail, Result as R};
@@ -46,7 +47,7 @@ impl Cell {
     }
     pub fn to_string(&self) -> String {
         match self {
-            Cell::Empty => String::new(),
+            Cell::Empty => ".".into(),
             Cell::Consumed => "<!CONSUMED>".into(),
             Cell::Num(x) => x.to_string(),
             Cell::Op(op) => op.symbol().to_string(),
@@ -272,6 +273,10 @@ impl State {
             }
         }
         State { cells, t: 1 }
+    }
+
+    pub fn to_string(&self) -> String {
+        self.cells[1..self.cells.len()-1].iter().map(|row| row[1..row.len()-1].iter().map(|c| c.to_string()).join(" ")).join("\n")
     }
 
     pub fn instantiate(&mut self, a: Integer, b: Integer) {
